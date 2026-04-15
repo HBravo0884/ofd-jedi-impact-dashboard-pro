@@ -12,21 +12,19 @@ export default async function Home() {
   let uncategorized = 0;
 
   // Chart Data Arrays
-  let rankLabels: string[] = [];
-  let rankCounts: number[] = [];
+  let bubblePoints: any[] = [];
 
   try {
-    const [attendanceRes, facultyRes, eventRes, uncatRes, rankRes] = await Promise.all([
+    const [attendanceRes, facultyRes, eventRes, uncatRes, facultyList] = await Promise.all([
       prisma.attendance.count(),
       prisma.faculty.count({ where: { status: 'VERIFIED' } }),
       prisma.event.count(),
       prisma.faculty.count({
         where: { status: 'PENDING_RESOLUTION' }
       }),
-      prisma.faculty.groupBy({
-        by: ['rank'],
-        _count: { rank: true },
-        orderBy: { _count: { rank: 'desc' } }
+      prisma.faculty.findMany({
+        where: { status: 'VERIFIED' },
+        include: { _count: { select: { attendances: true } } }
       })
     ]);
 
@@ -35,10 +33,21 @@ export default async function Home() {
     totalSessions = eventRes;
     uncategorized = uncatRes;
 
-    for (const r of rankRes) {
-      if (r.rank !== 'Unknown') { // Omit ghost accounts from Demographic Chart
-        rankLabels.push(r.rank.replace(/([A-Z])/g, ' $1').trim());
-        rankCounts.push(r._count.rank);
+    // Construct the deterministic Scatter / Jitter Map
+    for (const fac of facultyList) {
+      const atnd = fac._count.attendances;
+      if (atnd > 0) {
+        // Create deterministic Jitter between 0-20 to simulate the legacy scatter spread vertically
+        const hash = fac.id.charCodeAt(0) + fac.id.charCodeAt(fac.id.length - 1);
+        const yJitter = (hash % 100) / 5;
+        
+        bubblePoints.push({
+          x: atnd,
+          y: yJitter,
+          r: 5 + (atnd * 1.5), // Visually enlarge more recurrent participants
+          name: `${fac.firstName} ${fac.lastName}`,
+          dept: fac.department.replace(/([A-Z])/g, ' $1').trim()
+        });
       }
     }
   } catch (error) {
@@ -92,7 +101,7 @@ export default async function Home() {
 
       {/* Main Charts Architecture - Mimicking the original layout grids */}
       <div className="charts-grid">
-        <DashboardChart labels={rankLabels} counts={rankCounts} />
+        <DashboardChart points={bubblePoints} />
         <div className="chart-card">
           <h3>Faculty Engagement Depth</h3>
           <div className="sub">How many participants attended 1 session vs. became repeat attendees. Measures programming stickiness over time.</div>

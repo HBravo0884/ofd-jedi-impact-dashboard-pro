@@ -4,31 +4,37 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
+  PointElement,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bubble } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  BarElement,
+  PointElement,
   Title,
   Tooltip,
   Legend
 );
 
-interface DashboardChartProps {
-  labels: string[];
-  counts: number[];
+export interface BubbleDataPoint {
+  x: number;
+  y: number;
+  r: number;
+  name: string;
+  dept: string;
 }
 
-export default function DashboardChart({ labels, counts }: DashboardChartProps) {
+interface DashboardChartProps {
+  points: BubbleDataPoint[];
+}
+
+export default function DashboardChart({ points }: DashboardChartProps) {
   const options = {
-    indexAxis: 'y' as const,
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -44,54 +50,61 @@ export default function DashboardChart({ labels, counts }: DashboardChartProps) 
         bodyColor: '#0d2e32',
         borderColor: '#d4eaec',
         borderWidth: 1,
-        titleFont: { size: 12, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
+        titleFont: { size: 13, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
         bodyFont: { size: 12, family: "'Segoe UI', Arial, sans-serif" },
         padding: 10,
-        cornerRadius: 4,
+        cornerRadius: 6,
         displayColors: false,
+        callbacks: {
+          label: function(context: any) {
+            const pt = context.raw as BubbleDataPoint;
+            return [`Faculty: ${pt.name}`, `Department: ${pt.dept}`, `Sessions Attended: ${pt.x}`];
+          }
+        }
       }
     },
     scales: {
       x: {
+        title: { display: true, text: 'Total Sessions Attended', font: { weight: 'bold' } },
         grid: {
-          color: '#d4eaec',
+          color: '#e4f1f2',
         },
         ticks: {
           color: '#5a8a8f',
-          font: { family: "'Segoe UI', Arial, sans-serif" }
+          stepSize: 1
         }
       },
       y: {
+        title: { display: true, text: 'Categorical Spread (Jitter)', font: { weight: 'bold' } },
         grid: {
           display: false,
         },
         ticks: {
-          color: '#0d2e32',
-          font: { family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const }
+          display: false // Hide Y-Axis ticks strictly for Jitter maps
         }
       }
     }
   };
 
   const data = {
-    labels: labels.length ? labels : ['No Data'],
     datasets: [
       {
-        label: 'Total Active Attendees',
-        data: counts.length ? counts : [0],
-        backgroundColor: '#097C87',
-        hoverBackgroundColor: '#e07a50',
-        borderRadius: 3,
+        label: 'Faculty Reach',
+        data: points,
+        backgroundColor: 'rgba(9, 124, 135, 0.65)',
+        hoverBackgroundColor: 'rgba(224, 122, 80, 0.95)',
+        borderColor: '#097C87',
+        borderWidth: 1
       },
     ],
   };
 
   return (
     <div className={styles.chartCard}>
-      <h3>Attendees by Academic Rank</h3>
-      <div className={styles.sub}>Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.</div>
+      <h3>Canonical Identity Reach Map</h3>
+      <div className={styles.sub}>Longitudinal individual tracking mapped against session engagement depth. Simulating phase 1 Jitter.</div>
       <div className={styles.chartWrapper}>
-        <Bar options={options} data={data} />
+        <Bubble options={options as any} data={data} />
       </div>
     </div>
   );
