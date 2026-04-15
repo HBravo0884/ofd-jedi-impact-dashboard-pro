@@ -8,6 +8,8 @@ export default async function Home() {
   // Fetch live metrics from Supabase DB via Prisma
   let totalAttendance = 0;
   let totalFaculty = 0;
+  let totalSessions = 0;
+  let uncategorized = 0;
   let avgDuration = '0';
   let repeatPercent = '0%';
   let deptCoverage = '0%';
