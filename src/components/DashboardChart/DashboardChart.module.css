@@ -1,18 +1,4 @@
-.kpiRow {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 22px;
-}
-
-.chartsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 18px;
-  margin-bottom: 20px;
-}
-
-.placeholderChart {
+.chartCard {
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -20,17 +6,25 @@
   width: 100%;
 }
 
-.placeholderChart h3 {
+.chartCard h3 {
   font-size: .75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .6px;
   color: var(--c1d);
   margin-bottom: 3px;
+  cursor: help;
 }
 
 .sub {
   font-size: .69rem;
   color: var(--muted);
   line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.chartWrapper {
+  position: relative;
+  height: 280px;
+  width: 100%;
 }

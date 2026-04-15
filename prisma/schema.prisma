@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------
+// STRICT TAXONOMY (ENUMS)
+// Prevents "Fat Finger" Typo Corruption
+// ------------------------------------------
+
+enum DivisionType {
+  Clinical
+  BasicSciences
+  Administration
+  Other
+}
+
+enum ProfileStatus {
+  VERIFIED
+  PENDING_RESOLUTION
+}
+
+enum DepartmentType {
+  Anatomy
+  Biochemistry
+  Microbiology
+  Pathology
+  Pharmacology
+  Physiology
+  Anesthesiology
+  CommunityFamilyMedicine
+  Dermatology
+  Medicine
+  Neurology
+  ObstetricsGynecology
+  Ophthalmology
+  OrthopaedicSurgery
+  Pediatrics
+  Psychiatry
+  RadiationOncology
+  Radiology
+  Surgery
+  MedicalEducation
+  Administration
+  Other
+}
+
+enum AcademicRank {
+  Instructor
+  AssistantProfessor
+  AssociateProfessor
+  Professor
+  Chair
+  Dean
+  Faculty
+  Staff
+  Student
+  Unknown
+}
+
+// ------------------------------------------
+// RELATIONAL DATA MODELS
+// ------------------------------------------
+
+model Faculty {
+  id             String         @id @default(uuid())
+  firstName      String
+  lastName       String
+  email          String         @unique
+  division       DivisionType   @default(Other)
+  department     DepartmentType @default(Other)
+  rank           AcademicRank   @default(Unknown)
+  status         ProfileStatus  @default(PENDING_RESOLUTION)
+  degrees        String[]       // e.g. ["MD", "PhD"]
+  aliases        String[]       // e.g. ["Dr. Bravo", "Aranza's iPhone"]
+  signatureUrls  String[]       // Extensibility hook for iPad signature traces
+  
+  // Relations
+  attendances    Attendance[]
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model EventSeries {
+  id             String         @id @default(uuid())
+  title          String         @unique // e.g. "Grand Rounds 2026"
+  description    String?
+  
+  events         Event[]
+}
+
+model Event {
+  id             String         @id @default(uuid())
+  title          String         // e.g. "Cancer Bioethics (10/12)"
+  date           DateTime
+  baseDuration   Int            // Official meeting length in minutes
+  
+  seriesId       String?
+  series         EventSeries?   @relation(fields: [seriesId], references: [id])
+  attendances    Attendance[]
+  
+  createdAt      DateTime       @default(now())
+}
+
+model Attendance {
+  id             String         @id @default(uuid())
+  facultyId      String
+  eventId        String
+  durationJoined Int            // Minutes this individual legally attended
+  
+  faculty        Faculty        @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  // Compound Unique Key: A person cannot attend the identical event twice
+  @@unique([facultyId, eventId])
+  createdAt      DateTime       @default(now())
+}

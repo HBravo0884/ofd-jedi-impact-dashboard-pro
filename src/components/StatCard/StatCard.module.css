@@ -1,0 +1,40 @@
+.kpiCard {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 20px;
+  flex: 1;
+  min-width: 150px;
+  border-left: 5px solid var(--c1);
+}
+
+.borderC1 { border-left-color: var(--c1); }
+.borderC2 { border-left-color: var(--c2); }
+.borderC3 { border-left-color: var(--c3); }
+.borderC5 { border-left-color: var(--c5); }
+
+.kpiNum {
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.textC1 { color: var(--c1); }
+.textC2 { color: var(--c2d); }
+.textC3 { color: var(--c3d); }
+.textC5 { color: var(--c5d); }
+
+.kpiLabel {
+  font-size: .69rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.kpiSub {
+  font-size: .71rem;
+  color: var(--muted);
+  margin-top: 2px;
+}

@@ -1,66 +1,106 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import DashboardChart from '@/components/DashboardChart/DashboardChart';
+import { prisma } from '@/lib/prisma';
+import Link from 'next/link';
 
-export default function Home() {
+export const revalidate = 0; // Ensure data stays fresh on every request
+
+export default async function Home() {
+  // Fetch live metrics from Supabase DB via Prisma
+  let totalAttendance = 0;
+  let totalFaculty = 0;
+  let totalSessions = 0;
+  let uncategorized = 0;
+
+  // Chart Data Arrays
+  let rankLabels: string[] = [];
+  let rankCounts: number[] = [];
+
+  try {
+    const [attendanceRes, facultyRes, eventRes, uncatRes, rankRes] = await Promise.all([
+      prisma.attendance.count(),
+      prisma.faculty.count({ where: { status: 'VERIFIED' } }),
+      prisma.event.count(),
+      prisma.faculty.count({
+        where: { status: 'PENDING_RESOLUTION' }
+      }),
+      prisma.faculty.groupBy({
+        by: ['rank'],
+        _count: { rank: true },
+        orderBy: { _count: { rank: 'desc' } }
+      })
+    ]);
+
+    totalAttendance = attendanceRes;
+    totalFaculty = facultyRes;
+    totalSessions = eventRes;
+    uncategorized = uncatRes;
+
+    for (const r of rankRes) {
+      if (r.rank !== 'Unknown') { // Omit ghost accounts from Demographic Chart
+        rankLabels.push(r.rank.replace(/([A-Z])/g, ' $1').trim());
+        rankCounts.push(r._count.rank);
+      }
+    }
+  } catch (error) {
+    console.error("Database connection failed:", error);
+  }
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <div className="sec">Programming Scope</div>
+      <div className="kpi-row">
+        <div className="kpi-card">
+          <div className="kpi-num">{totalAttendance.toLocaleString()}</div>
+          <div className="kpi-label">Attendance Records</div>
+          <div className="kpi-sub">Total session-level engagements</div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="kpi-card">
+          <div className="kpi-num">{totalFaculty.toLocaleString()}</div>
+          <div className="kpi-label">Unique Participants</div>
+          <div className="kpi-sub">Faculty, staff & trainees</div>
         </div>
-      </main>
-    </div>
+        <div className="kpi-card">
+          <div className="kpi-num">{totalSessions.toLocaleString()}</div>
+          <div className="kpi-label">Sessions Delivered</div>
+          <div className="kpi-sub">Across 5 programming series</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-num">{uncategorized.toLocaleString()}</div>
+          <div className="kpi-label">Uncategorized Profiles</div>
+          <div className="kpi-sub">Profiles needing attention ({uncategorized} detected)</div>
+        </div>
+      </div>
+
+      <div className="sec" style={{ marginTop: '-6px' }}>Engagement Depth</div>
+      <div className="kpi-row">
+        <div className="kpi-card" style={{ borderLeftColor: 'var(--c2)' }}>
+          <div className="kpi-num" style={{ color: 'var(--c2d)' }}>76.4</div>
+          <div className="kpi-label">Avg Duration</div>
+          <div className="kpi-sub">Minutes per attendance</div>
+        </div>
+        <div className="kpi-card" style={{ borderLeftColor: 'var(--c3)' }}>
+          <div className="kpi-num" style={{ color: 'var(--c3d)' }}>45%</div>
+          <div className="kpi-label">Repeat Attendees</div>
+          <div className="kpi-sub">% attending 2+ sessions</div>
+        </div>
+        <div className="kpi-card" style={{ borderLeftColor: 'var(--c5)' }}>
+          <div className="kpi-num" style={{ color: 'var(--c5d)' }}>82%</div>
+          <div className="kpi-label">Department Coverage</div>
+          <div className="kpi-sub">% of participants by dept</div>
+        </div>
+      </div>
+
+      {/* Main Charts Architecture - Mimicking the original layout grids */}
+      <div className="charts-grid">
+        <DashboardChart labels={rankLabels} counts={rankCounts} />
+        <div className="chart-card">
+          <h3>Faculty Engagement Depth</h3>
+          <div className="sub">How many participants attended 1 session vs. became repeat attendees. Measures programming stickiness over time.</div>
+          <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', background: 'var(--bg)', borderRadius: '6px', border: '1px dashed var(--border)' }}>
+             Chart Logic Pending Supabase Wire-up
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
