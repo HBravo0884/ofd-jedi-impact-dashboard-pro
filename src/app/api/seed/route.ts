@@ -4,18 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import { extractCanonicalIdentity } from '@/lib/heuristics';
 import type { DivisionType, AcademicRank, ProfileStatus, EventSeries, EventType } from '@prisma/client';
+import legacyDataRaw from '@/data/final_payload.json';
 
 export async function GET() {
   try {
-    // 1. Locate the highly-scrutinized Phase 1 JSON File natively within the React Server Map
-    const payloadPath = path.join(process.cwd(), 'src/data/final_payload.json');
-    
-    if (!fs.existsSync(payloadPath)) {
-      return NextResponse.json({ error: "Legacy payload not found." }, { status: 404 });
-    }
-
-    const fileContent = fs.readFileSync(payloadPath, 'utf8');
-    const legacyData = JSON.parse(fileContent);
+    const legacyData: any = legacyDataRaw;
 
     // 0. Ensure Idempotency (Prevent Duplicate Cloud Syncs)
     await prisma.attendance.deleteMany({});
