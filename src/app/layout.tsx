@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import Image from 'next/image';
+import { TopNav } from '@/components/TopNav';
 
 export const metadata: Metadata = {
   title: 'HUCM Office of Faculty Development — Impact Dashboard',
@@ -38,15 +39,7 @@ export default function RootLayout({
           </div>
         </header>
 
-        <div className="tab-bar">
-          <Link href="/" className="tab-btn active">Overview</Link>
-          <Link href="/series" className="tab-btn">By Series</Link>
-          <Link href="/engagement" className="tab-btn">Engagement</Link>
-          <Link href="/drilldown" className="tab-btn">Impact Drilldown</Link>
-          <Link href="/roster" className="tab-btn">Event Roster</Link>
-          <Link href="/directory" className="tab-btn">Directory</Link>
-          <Link href="/methods" className="tab-btn">Data & Methods</Link>
-        </div>
+        <TopNav />
 
         <div className="tab-pane active" id="tab-overview">
           {children}
