@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { extractCanonicalIdentity } from '@/lib/heuristics';
-import type { DivisionType, AcademicRank, ProfileStatus, EventSeries, EventType } from '@prisma/client';
+import type { DivisionType, AcademicRank, ProfileStatus } from '@prisma/client';
 import legacyDataRaw from '@/data/final_payload.json';
 
 export async function GET() {
@@ -49,30 +49,28 @@ export async function GET() {
        recordsSeeded++;
     }
 
-    // 3. SEED EVENTS
+    // 3. SEED EVENT SERIES & EVENTS
     const sessions = legacyData.sessions || [];
     let eventsSeeded = 0;
     const eventIdMap: Record<string, string> = {}; // Mapping label -> DB event id
 
     for (const session of sessions) {
-      let mappedSeries: EventSeries = 'Other';
-      const sLower = session.series.toLowerCase();
-      if (sLower.includes('dean')) mappedSeries = 'DeansDynamicDuo';
-      else if (sLower.includes('faculty tools')) mappedSeries = 'FacultyTools';
-      else if (sLower.includes('fundamentals')) mappedSeries = 'Fundamentals';
-      else if (sLower.includes('jedi') || sLower.includes('diversity')) mappedSeries = 'JEDI';
-      else if (sLower.includes('writing')) mappedSeries = 'WritingWorkshop';
+      // Create or locate the Series
+      const seriesTitle = session.series || "Uncategorized Series";
+      const seriesRecord = await prisma.eventSeries.upsert({
+        where: { title: seriesTitle },
+        update: {},
+        create: { title: seriesTitle }
+      });
 
-      let mappedType: EventType = 'Workshop';
-      if (sLower.includes('dean') || sLower.includes('lecture')) mappedType = 'Lecture';
-      
+      // Create the explicit Event
+      const eventTitle = session.topic || session.label || "Unknown Event";
       const evt = await prisma.event.create({
         data: {
-          topic: session.topic || session.label,
-          desc: session.desc || "",
-          type: mappedType,
-          series: mappedSeries,
-          date: new Date(session.date_str)
+          title: eventTitle,
+          date: new Date(session.date_str || new Date()),
+          baseDuration: session.n || 60,
+          seriesId: seriesRecord.id
         }
       });
       eventIdMap[session.label] = evt.id;
@@ -84,12 +82,9 @@ export async function GET() {
     let attendanceSeeded = 0;
 
     for (const rawName of Object.keys(personDates)) {
-      // Re-run the Heuristics Engine to perfectly trace their Email ID to lookup the Faculty record
-      // We use a fake email since this is historic data matching
       const fakeEmail = `legacy_${Math.random().toString(36).substring(7)}@pending.com`;
       const inferred = extractCanonicalIdentity(rawName, fakeEmail, 0);
       
-      // Look up Faculty by their canonical first and last name match or alias
       const personRecord = await prisma.faculty.findFirst({
         where: {
           OR: [
@@ -101,14 +96,11 @@ export async function GET() {
 
       if (!personRecord) continue;
 
-      // Extract Array of their sessions
       const sessionsArray = personDates[rawName];
       for (const historyRecord of sessionsArray) {
-         // Create the Event Label to hook against our Event Map
-         // Usually format in Phase 1 was like: "Mar 19·Dean's Dynamic Duo Lecture Series"
-         // Wait, the Phase 1 arrays have a strict "topic" and "date" we can query.
+         // Query by title (which mapped to topic/label)
          const targetEvent = await prisma.event.findFirst({
-           where: { topic: historyRecord.topic }
+           where: { title: historyRecord.topic }
          });
 
          if (targetEvent) {
@@ -116,7 +108,7 @@ export async function GET() {
              data: {
                facultyId: personRecord.id,
                eventId: targetEvent.id,
-               duration: historyRecord.duration || 60
+               durationJoined: historyRecord.duration || 60
              }
            });
            attendanceSeeded++;
