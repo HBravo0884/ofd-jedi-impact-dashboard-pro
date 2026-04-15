@@ -7,8 +7,8 @@ import type { DivisionType, AcademicRank, ProfileStatus, EventSeries, EventType 
 
 export async function GET() {
   try {
-    // 1. Locate the highly-scrutinized Phase 1 JSON File
-    const payloadPath = path.resolve('/Users/entreprneuros/Library/CloudStorage/OneDrive-SharedLibraries-HowardUniversity/Faculty Corner HUCM - OFD Impact Dashboard/OFD/Examples Impact Dashboard Demo/final_payload.json');
+    // 1. Locate the highly-scrutinized Phase 1 JSON File natively within the React Server Map
+    const payloadPath = path.join(process.cwd(), 'src/data/final_payload.json');
     
     if (!fs.existsSync(payloadPath)) {
       return NextResponse.json({ error: "Legacy payload not found." }, { status: 404 });
