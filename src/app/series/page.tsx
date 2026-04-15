@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 export const revalidate = 0;
 
 export default async function SeriesPage() {
-  let seriesData = [];
+  let seriesData: any[] = [];
 
   try {
     const rawSeries = await prisma.eventSeries.findMany({

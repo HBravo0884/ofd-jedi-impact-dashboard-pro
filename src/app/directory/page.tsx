@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const revalidate = 0;
 
 export default async function DirectoryPage() {
-  let faculty = [];
+  let faculty: any[] = [];
   try {
     faculty = await prisma.faculty.findMany({
       where: { status: 'VERIFIED' },
