@@ -26,6 +26,9 @@ ChartJS.register(
 export interface BarDataPoint {
   labels: string[];
   counts: number[];
+  title?: string;
+  sub?: string;
+  tooltipLabel?: string;
 }
 
 export interface BubbleDataPoint {
@@ -117,7 +120,13 @@ export function BubbleChart({ points }: BubbleChartProps) {
   );
 }
 
-export function BarChart({ labels, counts }: BarDataPoint) {
+export function BarChart({ 
+  labels, 
+  counts, 
+  title = "Attendees by Academic Rank", 
+  sub = "Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.",
+  tooltipLabel = "Total Active Attendees"
+}: BarDataPoint) {
   const options = {
     indexAxis: 'y' as const,
     responsive: true,
@@ -141,7 +150,8 @@ export function BarChart({ labels, counts }: BarDataPoint) {
     scales: {
       x: {
         grid: { color: '#d4eaec' },
-        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" } }
+        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, precision: 0 },
+        beginAtZero: true
       },
       y: {
         grid: { display: false },
@@ -154,7 +164,7 @@ export function BarChart({ labels, counts }: BarDataPoint) {
     labels: labels.length ? labels : ['No Data'],
     datasets: [
       {
-        label: 'Total Active Attendees',
+        label: tooltipLabel,
         data: counts.length ? counts : [0],
         backgroundColor: '#097C87',
         hoverBackgroundColor: '#e07a50',
@@ -164,10 +174,10 @@ export function BarChart({ labels, counts }: BarDataPoint) {
   };
 
   return (
-    <div className={styles.chartCard}>
-      <h3>Attendees by Academic Rank</h3>
-      <div className={styles.sub}>Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.</div>
-      <div className={styles.chartWrapper}>
+    <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <h3>{title}</h3>
+      <div className={styles.sub} style={{ flexShrink: 0 }}>{sub}</div>
+      <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '200px' }}>
         <Bar options={options as any} data={data} />
       </div>
     </div>
