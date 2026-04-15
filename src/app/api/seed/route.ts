@@ -104,8 +104,15 @@ export async function GET() {
          });
 
          if (targetEvent) {
-           await prisma.attendance.create({
-             data: {
+           await prisma.attendance.upsert({
+             where: {
+               facultyId_eventId: {
+                 facultyId: personRecord.id,
+                 eventId: targetEvent.id
+               }
+             },
+             update: {},
+             create: {
                facultyId: personRecord.id,
                eventId: targetEvent.id,
                durationJoined: historyRecord.duration || 60
