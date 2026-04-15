@@ -1,4 +1,4 @@
-import DashboardChart from '@/components/DashboardChart/DashboardChart';
+import { BarChart } from '@/components/DashboardChart/DashboardChart';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 
@@ -12,19 +12,21 @@ export default async function Home() {
   let uncategorized = 0;
 
   // Chart Data Arrays
-  let bubblePoints: any[] = [];
+  let rankLabels: string[] = [];
+  let rankCounts: number[] = [];
 
   try {
-    const [attendanceRes, facultyRes, eventRes, uncatRes, facultyList] = await Promise.all([
+    const [attendanceRes, facultyRes, eventRes, uncatRes, rankRes] = await Promise.all([
       prisma.attendance.count(),
       prisma.faculty.count({ where: { status: 'VERIFIED' } }),
       prisma.event.count(),
       prisma.faculty.count({
         where: { status: 'PENDING_RESOLUTION' }
       }),
-      prisma.faculty.findMany({
-        where: { status: 'VERIFIED' },
-        include: { _count: { select: { attendances: true } } }
+      prisma.faculty.groupBy({
+        by: ['rank'],
+        _count: { rank: true },
+        orderBy: { _count: { rank: 'desc' } }
       })
     ]);
 
@@ -33,21 +35,10 @@ export default async function Home() {
     totalSessions = eventRes;
     uncategorized = uncatRes;
 
-    // Construct the deterministic Scatter / Jitter Map
-    for (const fac of facultyList) {
-      const atnd = fac._count.attendances;
-      if (atnd > 0) {
-        // Create deterministic Jitter between 0-20 to simulate the legacy scatter spread vertically
-        const hash = fac.id.charCodeAt(0) + fac.id.charCodeAt(fac.id.length - 1);
-        const yJitter = (hash % 100) / 5;
-        
-        bubblePoints.push({
-          x: atnd,
-          y: yJitter,
-          r: 5 + (atnd * 1.5), // Visually enlarge more recurrent participants
-          name: `${fac.firstName} ${fac.lastName}`,
-          dept: fac.department.replace(/([A-Z])/g, ' $1').trim()
-        });
+    for (const r of rankRes) {
+      if (r.rank !== 'Unknown') { // Omit ghost accounts from Demographic Chart
+        rankLabels.push(r.rank.replace(/([A-Z])/g, ' $1').trim());
+        rankCounts.push(r._count.rank);
       }
     }
   } catch (error) {
@@ -101,12 +92,12 @@ export default async function Home() {
 
       {/* Main Charts Architecture - Mimicking the original layout grids */}
       <div className="charts-grid">
-        <DashboardChart points={bubblePoints} />
+        <BarChart labels={rankLabels} counts={rankCounts} />
         <div className="chart-card">
           <h3>Faculty Engagement Depth</h3>
           <div className="sub">How many participants attended 1 session vs. became repeat attendees. Measures programming stickiness over time.</div>
           <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', background: 'var(--bg)', borderRadius: '6px', border: '1px dashed var(--border)' }}>
-             Chart Logic Pending Supabase Wire-up
+             <Link href="/engagement" style={{ color: 'var(--c5)' }}>View Scatter Core inside Engagement Depth →</Link>
           </div>
         </div>
       </div>
