@@ -29,6 +29,7 @@ export interface BarDataPoint {
   title?: string;
   sub?: string;
   tooltipLabel?: string;
+  colors?: string | string[];
 }
 
 export interface BubbleDataPoint {
@@ -125,7 +126,8 @@ export function BarChart({
   counts, 
   title = "Attendees by Academic Rank", 
   sub = "Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.",
-  tooltipLabel = "Total Active Attendees"
+  tooltipLabel = "Total Active Attendees",
+  colors = '#097C87'
 }: BarDataPoint) {
   const options = {
     indexAxis: 'y' as const,
@@ -166,7 +168,7 @@ export function BarChart({
       {
         label: tooltipLabel,
         data: counts.length ? counts : [0],
-        backgroundColor: '#097C87',
+        backgroundColor: colors,
         hoverBackgroundColor: '#e07a50',
         borderRadius: 3,
       },

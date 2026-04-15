@@ -1,4 +1,4 @@
-import { BubbleChart } from '@/components/DashboardChart/DashboardChart';
+import { BubbleChart, BarChart } from '@/components/DashboardChart/DashboardChart';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 
@@ -6,12 +6,21 @@ export const revalidate = 0; // Ensure data stays fresh on every request
 
 export default async function EngagementPage() {
   let bubblePoints: any[] = [];
+  let rankLabels: string[] = [];
+  let rankCounts: number[] = [];
   
   try {
-    const facultyList = await prisma.faculty.findMany({
-      where: { status: 'VERIFIED' },
-      include: { _count: { select: { attendances: true } } }
-    });
+    const [facultyList, rankGroup] = await Promise.all([
+      prisma.faculty.findMany({
+         where: { status: 'VERIFIED' },
+         include: { _count: { select: { attendances: true } } }
+      }),
+      prisma.faculty.groupBy({ 
+         by: ['rank'],
+         _count: { rank: true },
+         orderBy: { _count: { rank: 'desc' } }
+      })
+    ]);
 
     for (const fac of facultyList) {
       const atnd = fac._count.attendances;
@@ -29,6 +38,14 @@ export default async function EngagementPage() {
         });
       }
     }
+
+    rankGroup.forEach(r => {
+      if (r.rank !== 'Unknown') {
+         rankLabels.push(r.rank.replace(/([A-Z])/g, ' $1').trim());
+         rankCounts.push(r._count.rank);
+      }
+    });
+
   } catch (error) {
     console.error("Database connection failed:", error);
   }
@@ -43,6 +60,18 @@ export default async function EngagementPage() {
       
       <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
         <BubbleChart points={bubblePoints} />
+      </div>
+
+      <div className="sec" style={{ marginTop: '20px' }}>Demographics</div>
+      <div className="charts-grid">
+         <BarChart 
+            title="Attendees by Academic Rank"
+            sub="Distribution across the academic career ladder. Shows whether OFD programming reaches faculty at all levels."
+            labels={rankLabels}
+            counts={rankCounts}
+            tooltipLabel="Individuals"
+            colors="#A1CCA6"
+         />
       </div>
     </>
   );

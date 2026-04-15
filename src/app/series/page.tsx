@@ -101,6 +101,7 @@ export default async function SeriesPage() {
                         labels={series.chartLabels}
                         counts={series.chartCounts}
                         tooltipLabel="Participants"
+                        colors={barColor}
                     />
                 </div>
             </div>
