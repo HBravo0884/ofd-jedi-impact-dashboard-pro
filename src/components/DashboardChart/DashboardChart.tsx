@@ -10,8 +10,10 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Bubble, Bar } from 'react-chartjs-2';
+import { Bubble, Bar, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
+import { useRef } from 'react';
+import { useRouter } from 'next/navigation';
 
 ChartJS.register(
   CategoryScale,
@@ -129,8 +131,23 @@ export function BarChart({
   tooltipLabel = "Total Active Attendees",
   colors = '#097C87'
 }: BarDataPoint) {
+  const chartRef = useRef(null);
+  const router = useRouter();
+
+  const handleChartClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!chartRef.current) return;
+    const elements = getElementAtEvent(chartRef.current, event);
+    if (elements.length > 0) {
+      const { index } = elements[0];
+      const clickedLabel = labels[index];
+      // Engage Drilldown Route natively via query search param
+      router.push(`/drilldown?filterLabel=${encodeURIComponent(clickedLabel)}`);
+    }
+  };
+
   const options = {
     indexAxis: 'y' as const,
+    onClick: handleChartClick,
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -180,7 +197,7 @@ export function BarChart({
       <h3>{title}</h3>
       <div className={styles.sub} style={{ flexShrink: 0 }}>{sub}</div>
       <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '200px' }}>
-        <Bar options={options as any} data={data} />
+        <Bar ref={chartRef} options={options as any} data={data} onClick={handleChartClick} />
       </div>
     </div>
   );

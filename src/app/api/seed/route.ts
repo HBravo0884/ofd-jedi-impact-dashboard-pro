@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
-import { extractCanonicalIdentity } from '@/lib/heuristics';
+import { extractCanonicalIdentity, isDnaMatch } from '@/lib/heuristics';
 import { mapRank, mapDepartment, getEventTitle } from '@/lib/dictionary';
 import type { AcademicRank, DepartmentType, ProfileStatus } from '@prisma/client';
 import legacyDataRaw from '@/data/final_payload.json';
@@ -91,7 +91,8 @@ export async function GET() {
       const fakeEmail = `legacy_${Math.random().toString(36).substring(7)}@pending.com`;
       const inferred = extractCanonicalIdentity(rawName, fakeEmail, 0);
       
-      const personRecord = await prisma.faculty.findFirst({
+      
+      let personRecord = await prisma.faculty.findFirst({
         where: {
           OR: [
             { aliases: { has: rawName } },
@@ -99,8 +100,24 @@ export async function GET() {
           ]
         }
       });
-
-      if (!personRecord) continue;
+      
+      // Trust Engine Fallback: DNA Match orphaned raw names to active identities natively
+      if (!personRecord) {
+         const allActive = await prisma.faculty.findMany({ select: { id: true, aliases: true, firstName: true, lastName: true } });
+         for (const cand of allActive) {
+            const composite = cand.firstName + ' ' + cand.lastName;
+            if (isDnaMatch(composite, rawName, 0.70) || cand.aliases.some(a => isDnaMatch(a, rawName, 0.85))) {
+               personRecord = await prisma.faculty.findUnique({ where: { id: cand.id } });
+               // Physically stitch the orphan alias back so it's globally tracked next time
+               await prisma.faculty.update({
+                  where: { id: cand.id },
+                  data: { aliases: { push: rawName } }
+               });
+               break;
+            }
+         }
+      }
+if (!personRecord) continue;
 
       const sessionsArray = personDates[rawName];
       for (const historyRecord of sessionsArray) {
