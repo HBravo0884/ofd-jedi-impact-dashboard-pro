@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { extractCanonicalIdentity, isDnaMatch } from '@/lib/heuristics';
-import type { DivisionType, AcademicRank, ProfileStatus } from '@prisma/client';
+import type { AcademicRank, ProfileStatus } from '@prisma/client';
 
 export async function POST(request: Request) {
   try {
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
             email: secureEmail,
             aliases: [person.name],
             degrees: inferred.inferredDegrees,
-            division: inferred.inferredDivision as DivisionType,
+            division: inferred.inferredDivision,
             rank: inferred.inferredRank as AcademicRank,
             department: 'Other', // Awaiting manual mapping by admin
             status: defaultStatus

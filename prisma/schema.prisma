@@ -47,6 +47,7 @@ enum DepartmentType {
   Surgery
   MedicalEducation
   Administration
+  Student
   Other
 }
 
@@ -72,7 +73,7 @@ model Faculty {
   firstName      String
   lastName       String
   email          String         @unique
-  division       DivisionType   @default(Other)
+  division       String?
   department     DepartmentType @default(Other)
   rank           AcademicRank   @default(Unknown)
   status         ProfileStatus  @default(PENDING_RESOLUTION)

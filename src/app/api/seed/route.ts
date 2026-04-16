@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { extractCanonicalIdentity } from '@/lib/heuristics';
-import type { DivisionType, AcademicRank, ProfileStatus } from '@prisma/client';
+import { mapRank, mapDepartment, getEventTitle } from '@/lib/dictionary';
+import type { AcademicRank, DepartmentType, ProfileStatus } from '@prisma/client';
 import legacyDataRaw from '@/data/final_payload.json';
 
 export async function GET() {
@@ -30,6 +31,10 @@ export async function GET() {
          inferred.inferredDegrees.push(profile.degree);
        }
 
+       // Use Dictionary
+       const coreRank = mapRank(profile.rank || inferred.inferredRank);
+       const coreDept = mapDepartment(profile.dept, profile.division);
+
        const faculty = await prisma.faculty.upsert({
          where: { email: email.toLowerCase() },
          update: {},
@@ -40,9 +45,9 @@ export async function GET() {
            aliases: [profile.name],
            status: fallbackStatus,
            degrees: inferred.inferredDegrees,
-           division: inferred.inferredDivision as DivisionType,
-           rank: inferred.inferredRank as AcademicRank,
-           department: 'Other'
+           division: profile.division || inferred.inferredDivision || 'Other',
+           rank: coreRank,
+           department: coreDept
          }
        });
 
@@ -52,7 +57,7 @@ export async function GET() {
     // 3. SEED EVENT SERIES & EVENTS
     const sessions = legacyData.sessions || [];
     let eventsSeeded = 0;
-    const eventIdMap: Record<string, string> = {}; // Mapping label -> DB event id
+    const eventIdMap: Record<string, string> = {}; // Mapping title -> DB event id
 
     for (const session of sessions) {
       // Create or locate the Series
@@ -63,8 +68,8 @@ export async function GET() {
         create: { title: seriesTitle }
       });
 
-      // Create the explicit Event
-      const eventTitle = session.topic || session.label || "Unknown Event";
+      // Create the explicit Event using Dictionary overlay
+      const eventTitle = getEventTitle(session.date_str, session.topic);
       const evt = await prisma.event.create({
         data: {
           title: eventTitle,
@@ -73,7 +78,8 @@ export async function GET() {
           seriesId: seriesRecord.id
         }
       });
-      eventIdMap[session.label] = evt.id;
+      // Important: Cache by exact derived title so History loop finds it!
+      eventIdMap[eventTitle] = evt.id;
       eventsSeeded++;
     }
 
@@ -98,23 +104,22 @@ export async function GET() {
 
       const sessionsArray = personDates[rawName];
       for (const historyRecord of sessionsArray) {
-         // Query by title (which mapped to topic/label)
-         const targetEvent = await prisma.event.findFirst({
-           where: { title: historyRecord.topic }
-         });
+         // Re-derive Title so it matches identically
+         const targetTitle = getEventTitle(historyRecord.date, historyRecord.topic);
+         const targetEventId = eventIdMap[targetTitle];
 
-         if (targetEvent) {
+         if (targetEventId) {
            await prisma.attendance.upsert({
              where: {
                facultyId_eventId: {
                  facultyId: personRecord.id,
-                 eventId: targetEvent.id
+                 eventId: targetEventId
                }
              },
              update: {},
              create: {
                facultyId: personRecord.id,
-               eventId: targetEvent.id,
+               eventId: targetEventId,
                durationJoined: historyRecord.duration || 60
              }
            });
