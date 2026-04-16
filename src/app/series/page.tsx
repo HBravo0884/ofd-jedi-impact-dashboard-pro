@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { BarChart } from '@/components/DashboardChart/DashboardChart';
 
+// Strict HTML Palette mapped array
+const C1='#097C87', C2='#FCA47C', C3='#23CED9', C4='#F9D779', C5='#A1CCA6';
+const PALETTE = [C1, C2, C3, C4, C5];
+
 const prisma = new PrismaClient();
 
 export const revalidate = 0;
@@ -101,7 +105,7 @@ export default async function SeriesPage() {
                         labels={series.chartLabels}
                         counts={series.chartCounts}
                         tooltipLabel="Participants"
-                        colors={barColor}
+                        colors={PALETTE}
                     />
                 </div>
             </div>
