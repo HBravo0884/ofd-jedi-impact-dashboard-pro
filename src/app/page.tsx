@@ -90,7 +90,7 @@ export default async function Home() {
       
       // Transform Dept arrays
       deptGroup.forEach(d => {
-         if (d.department.toLowerCase() !== 'unknown' && d.department.trim() !== '') {
+         if (d.department.toLowerCase() !== 'unknown' && d.department.toLowerCase() !== 'other' && d.department.trim() !== '') {
             // Un-camelcase department strings (e.g. Dean's Office / COM Admin)
             deptLabels.push(d.department.replace(/([A-Z])/g, ' $1').trim());
             deptCounts.push(d._count.department);
@@ -194,7 +194,7 @@ export default async function Home() {
             labels={deptLabels}
             counts={deptCounts}
             tooltipLabel="Individuals"
-            colors={C3}
+            colors={PALETTE}
          />
          <BarChart 
             title="Faculty Engagement Depth"
@@ -202,7 +202,7 @@ export default async function Home() {
             labels={stickinessLabels}
             counts={stickinessCounts}
             tooltipLabel="Participants"
-            colors={C2}
+            colors={PALETTE}
          />
       </div>
 

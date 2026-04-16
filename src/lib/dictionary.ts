@@ -39,11 +39,16 @@ export function mapRank(raw: string): AcademicRank {
 /**
  * Aggregates micro-divisions into core Departments.
  */
-export function mapDepartment(rawDept: string, rawDiv: string): DepartmentType {
+export function mapDepartment(rawDept: string, rawDiv: string, email: string = ''): DepartmentType {
   if (!rawDept) rawDept = '';
   if (!rawDiv) rawDiv = '';
   const t = (rawDept + ' ' + rawDiv).toLowerCase();
+  const e = email.toLowerCase();
 
+  // Explicit Email Mapping Overrides (Solves the "Anonymous" block)
+  if (e.includes('@bison.howard.edu')) return 'Student';
+  if (e.includes('legacy_')) return 'Other'; // They are anonymous!
+  
   // Internal Medicine Macro-bucket
   if (
     t.includes('medicine') ||
@@ -53,7 +58,8 @@ export function mapDepartment(rawDept: string, rawDiv: string): DepartmentType {
     t.includes('cardiology') ||
     t.includes('rheumatology') ||
     t.includes('nephrology') ||
-    t.includes('infectious disease')
+    t.includes('infectious disease') ||
+    e.includes('huhosp.org') // Default clinical hospital faculty to Medicine if unknown
   ) {
     return 'Medicine';
   }

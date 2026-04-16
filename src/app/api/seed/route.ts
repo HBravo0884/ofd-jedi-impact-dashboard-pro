@@ -33,7 +33,7 @@ export async function GET() {
 
        // Use Dictionary
        const coreRank = mapRank(profile.rank || inferred.inferredRank);
-       const coreDept = mapDepartment(profile.dept, profile.division);
+       const coreDept = mapDepartment(profile.dept, profile.division, email.toLowerCase());
 
        const faculty = await prisma.faculty.upsert({
          where: { email: email.toLowerCase() },
