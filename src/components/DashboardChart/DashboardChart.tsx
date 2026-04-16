@@ -6,11 +6,13 @@ import {
   LinearScale,
   PointElement,
   BarElement,
+  LineElement,
+  LineController,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Bubble, Bar, getElementAtEvent } from 'react-chartjs-2';
+import { Bubble, Bar, Chart as ReactChart, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
 import React, { useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -20,6 +22,8 @@ ChartJS.register(
   LinearScale,
   PointElement,
   BarElement,
+  LineElement,
+  LineController,
   Title,
   Tooltip,
   Legend
@@ -33,6 +37,7 @@ export interface BarDataPoint {
   tooltipLabel?: string;
   colors?: string | string[];
   dimension?: string;
+  indexAxis?: 'x' | 'y'; // Expose direction
 }
 
 export interface BubbleDataPoint {
@@ -131,7 +136,8 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
   sub = "Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.",
   tooltipLabel = "Total Active Attendees",
   colors = '#097C87',
-  dimension
+  dimension,
+  indexAxis = 'y'
 }, forwardedRef) => {
   const internalRef = useRef<any>(null);
   const router = useRouter();
@@ -188,7 +194,7 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
   };
 
   const options = {
-    indexAxis: 'y' as const,
+    indexAxis: indexAxis,
     onClick: handleChartClick,
     responsive: true,
     maintainAspectRatio: false,
@@ -254,6 +260,155 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
            options={options as any} 
            data={data} 
            onClick={handleChartClick} 
+        />
+      </div>
+    </div>
+  );
+});
+
+export interface StackedDataset {
+  label: string;
+  data: number[];
+  backgroundColor: string;
+  type?: 'bar' | 'line';
+  borderColor?: string;
+  borderDash?: number[];
+  borderWidth?: number;
+  pointRadius?: number;
+  order?: number; // Lower orders draw on top
+}
+
+export interface StackedBarDataPoint {
+  labels: string[];
+  datasets: StackedDataset[];
+  title?: string;
+  sub?: string;
+  indexAxis?: 'x' | 'y';
+}
+
+export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({ 
+  labels, 
+  datasets, 
+  title = "Stacked Visualization", 
+  sub = "",
+  indexAxis = 'x'
+}, forwardedRef) => {
+  const internalRef = useRef<any>(null);
+
+  const handleExportCSV = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Complex CSV export for stacked matrix
+    const header = ["Category", ...datasets.map(d => d.label.replace(/,/g, ''))].join(',');
+    let csvContent = header + "\n";
+    
+    labels.forEach((label: string, index: number) => {
+      const rowVals = datasets.map(d => d.data[index] || 0);
+      csvContent += `"${label.replace(/"/g, '""')}",${rowVals.join(',')}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_stacked.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPNG = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const chart = internalRef.current;
+    if (chart) {
+      const img = chart.toBase64Image();
+      const link = document.createElement("a");
+      link.setAttribute("href", img);
+      link.setAttribute("download", `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_stackgraph.png`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const options = {
+    indexAxis: indexAxis,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top' as const,
+        labels: {
+           boxWidth: 12,
+           font: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
+           color: '#5a8a8f',
+           usePointStyle: true,
+           filter: function(item: any) {
+              // Hide line/averages from the color legend dynamically if they contain 'Avg'
+              return !item.text.includes('Avg');
+           }
+        }
+      },
+      title: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        titleColor: '#0d2e32',
+        bodyColor: '#0d2e32',
+        borderColor: '#d4eaec',
+        borderWidth: 1,
+        titleFont: { size: 13, family: "'Inter', sans-serif", weight: 'bold' as const },
+        bodyFont: { size: 12, family: "'Inter', sans-serif", weight: 500 as const },
+        padding: 10,
+        boxPadding: 6,
+        cornerRadius: 6,
+        usePointStyle: true
+      }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        grid: { color: indexAxis === 'x' ? 'transparent' : '#f0f7f8' },
+        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, autoSkip: false, maxRotation: 45, minRotation: 0 }
+      },
+      y: {
+        stacked: true,
+        grid: { color: indexAxis === 'y' ? 'transparent' : '#f0f7f8' },
+        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, precision: 0 }
+      }
+    }
+  };
+
+  const data = {
+    labels: labels.length ? labels : ['No Data'],
+    datasets: datasets.length ? datasets : [{ label: 'Empty', data: [0], backgroundColor: '#ccc' }],
+  };
+
+  // Stacked supports mixed types (Line + Bar), so we use ReactChart
+  return (
+    <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+         <h3 style={{ margin: 0, paddingRight: '12px', color: '#097c87', fontSize: '1.25rem' }}>{title}</h3>
+         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+             <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>CSV dataset</button>
+             <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>PNG image</button>
+         </div>
+      </div>
+      {sub && <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px', color: '#5a8a8f', fontSize: '0.85rem' }}>{sub}</div>}
+      <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '350px', marginTop: '16px' }}>
+        <ReactChart 
+           type='bar'
+           ref={(node) => {
+              internalRef.current = node;
+              if (typeof forwardedRef === 'function') forwardedRef(node);
+              else if (forwardedRef) forwardedRef.current = node;
+           }} 
+           options={options as any} 
+           data={data} 
         />
       </div>
     </div>
