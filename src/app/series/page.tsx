@@ -1,9 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { BarChart } from '@/components/DashboardChart/DashboardChart';
-
-// Strict HTML Palette mapped array
-const C1='#097C87', C2='#FCA47C', C3='#23CED9', C4='#F9D779', C5='#A1CCA6';
-const PALETTE = [C1, C2, C3, C4, C5];
+import SeriesClient from './SeriesClient';
 
 const prisma = new PrismaClient();
 
@@ -70,48 +66,7 @@ export default async function SeriesPage() {
     <>
       <div className="sec">Programming Series Depth</div>
       
-      <div className="kpi-row" style={{ marginBottom: '30px' }}>
-        <div className="kpi-card" style={{ borderLeftColor: 'var(--c1)' }}>
-          <div className="kpi-num">{seriesData.length}</div>
-          <div className="kpi-label">Active Series</div>
-          <div className="kpi-sub">Total distinct programmatic umbrellas</div>
-        </div>
-      </div>
-
-      <div className="charts-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))' }}>
-        {seriesData.map((series, idx) => {
-          
-          // Provide vibrant border colors sequentially
-          const borders = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)'];
-          const barColor = borders[idx % borders.length];
-
-          return (
-            <div key={series.id} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div className="kpi-row" style={{ marginBottom: '0' }}>
-                    <div className="kpi-card" style={{ borderLeftColor: barColor, minWidth: '100px' }}>
-                    <div className="kpi-num" style={{ fontSize: '1.4rem' }}>{series.totalEvents}</div>
-                    <div className="kpi-label">Sessions</div>
-                    </div>
-                    <div className="kpi-card" style={{ borderLeftColor: barColor, minWidth: '100px' }}>
-                    <div className="kpi-num" style={{ fontSize: '1.4rem', color: barColor }}>{series.totalAttendances}</div>
-                    <div className="kpi-label">Attendances</div>
-                    </div>
-                </div>
-
-                <div style={{ flexGrow: 1 }}>
-                    <BarChart 
-                        title={series.title}
-                        sub={`Highest Attended: ${series.topEventTitle} (${series.topEventHits} participants).`}
-                        labels={series.chartLabels}
-                        counts={series.chartCounts}
-                        tooltipLabel="Participants"
-                        colors={PALETTE}
-                    />
-                </div>
-            </div>
-          );
-        })}
-      </div>
+      <SeriesClient seriesData={seriesData} />
     </>
   );
 }
