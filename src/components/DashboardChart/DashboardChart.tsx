@@ -136,6 +136,41 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
   const internalRef = useRef<any>(null);
   const router = useRouter();
 
+  const handleExportCSV = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    let csvContent = "Category,Value\n";
+    labels.forEach((label: string, index: number) => {
+      const row = `"${label.replace(/"/g, '""')}",${counts[index]}`;
+      csvContent += row + "\n";
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_data.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPNG = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const chart = internalRef.current;
+    if (chart) {
+      const img = chart.toBase64Image();
+      const link = document.createElement("a");
+      link.setAttribute("href", img);
+      link.setAttribute("download", `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_graph.png`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      alert("Graph rendering not complete or reference lost.");
+    }
+  };
+
   const handleChartClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const chart = internalRef.current;
     if (!chart) return;
@@ -201,8 +236,14 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
 
   return (
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h3>{title}</h3>
-      <div className={styles.sub} style={{ flexShrink: 0 }}>{sub}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+         <h3 style={{ margin: 0, paddingRight: '12px' }}>{title}</h3>
+         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+             <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>▼ CSV</button>
+             <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>🖼 PNG</button>
+         </div>
+      </div>
+      <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px' }}>{sub}</div>
       <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '200px' }}>
         <Bar 
            ref={(node) => {

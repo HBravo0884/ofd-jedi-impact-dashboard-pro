@@ -6,6 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ------------------------------------------
@@ -101,6 +102,8 @@ model Event {
   title          String         // e.g. "Cancer Bioethics (10/12)"
   date           DateTime
   baseDuration   Int            // Official meeting length in minutes
+  topic          String?
+  speaker        String?
   
   seriesId       String?
   series         EventSeries?   @relation(fields: [seriesId], references: [id])

@@ -16,41 +16,7 @@ export default function SeriesClient({ seriesData }: { seriesData: any[] }) {
 
   const activeSeries = seriesData[activeIndex];
 
-  const chartRef = useRef<any>(null);
-
-  const handleExportCSV = () => {
-    let csvContent = "Event Title,Attendances\n";
-    activeSeries.chartLabels.forEach((label: string, index: number) => {
-      const row = `"${label.replace(/"/g, '""')}",${activeSeries.chartCounts[index]}`;
-      csvContent += row + "\n";
-    });
-    
-    // Safely generate CSV via Blob to prevent # truncations in standard URIs
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${activeSeries.title.replace(/\s+/g, '_')}_data.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportPNG = () => {
-    // Rely on React Refs via Chart.js forwardRef instead of vanilla DOM scraping
-    if (chartRef.current) {
-      const img = chartRef.current.toBase64Image();
-      const link = document.createElement("a");
-      link.setAttribute("href", img);
-      link.setAttribute("download", `${activeSeries.title.replace(/\s+/g, '_')}_graph.png`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      alert("Graph rendering not complete or reference lost.");
-    }
-  };
+    // Exporters are now natively handled by the DashboardChart component
 
   return (
     <div>
@@ -93,42 +59,17 @@ export default function SeriesClient({ seriesData }: { seriesData: any[] }) {
             </div>
         </div>
 
-        {/* The active chart with download functions */}
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginBottom: '8px', paddingRight: '10px' }}>
-             <button 
-                onClick={handleExportCSV}
-                style={{
-                  background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '4px',
-                  padding: '4px 10px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--c1d)', cursor: 'pointer'
-                }}
-             >
-               ⬇ Download CSV
-             </button>
-             <button 
-                onClick={handleExportPNG}
-                style={{
-                  background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '4px',
-                  padding: '4px 10px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--c1d)', cursor: 'pointer'
-                }}
-             >
-               🖼 Export Graph
-             </button>
-          </div>
-          
           <div className="series-chart-container" style={{ minHeight: '400px' }}>
             <BarChart 
-                ref={chartRef}
                 title={activeSeries.title}
                 sub={`Highest Attended: ${activeSeries.topEventTitle} (${activeSeries.topEventHits} participants).`}
                 labels={activeSeries.chartLabels}
                 counts={activeSeries.chartCounts}
                 tooltipLabel="Participants"
-                colors={PALETTE}
+                colors={PALETTE[activeIndex % PALETTE.length]}
             />
           </div>
         </div>
-      </div>
     </div>
   );
 }
