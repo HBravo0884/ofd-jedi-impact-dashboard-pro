@@ -36,13 +36,13 @@ export default async function Home() {
   try {
     const [attendanceRes, facultyRes, eventRes, uncatRes, facultyArray, deptGroup, seriesArray] = await Promise.all([
       prisma.attendance.aggregate({ _sum: { durationJoined: true }, _count: true }),
-      prisma.faculty.count({ where: { status: 'VERIFIED' } }),
+      prisma.faculty.count({ where: { status: 'VERIFIED', attendances: { some: {} } } }),
       prisma.event.count(),
       prisma.faculty.count({
         where: { status: 'PENDING_RESOLUTION' }
       }),
       prisma.faculty.findMany({
-         where: { status: 'VERIFIED' },
+         where: { status: 'VERIFIED', attendances: { some: {} } },
          include: { _count: { select: { attendances: true } } }
       }),
       prisma.faculty.groupBy({ 

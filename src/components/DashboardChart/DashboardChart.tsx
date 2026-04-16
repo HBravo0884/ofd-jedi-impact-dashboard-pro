@@ -12,7 +12,7 @@ import {
 } from 'chart.js';
 import { Bubble, Bar, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
-import { useRef } from 'react';
+import React, { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 ChartJS.register(
@@ -32,6 +32,7 @@ export interface BarDataPoint {
   sub?: string;
   tooltipLabel?: string;
   colors?: string | string[];
+  dimension?: string;
 }
 
 export interface BubbleDataPoint {
@@ -123,25 +124,31 @@ export function BubbleChart({ points }: BubbleChartProps) {
   );
 }
 
-export function BarChart({ 
+export const BarChart = React.forwardRef<any, BarDataPoint>(({ 
   labels, 
   counts, 
   title = "Attendees by Academic Rank", 
   sub = "Distribution of unique participants per Academic Rank. Demonstrates longitudinal rank-based reach capability.",
   tooltipLabel = "Total Active Attendees",
-  colors = '#097C87'
-}: BarDataPoint) {
-  const chartRef = useRef(null);
+  colors = '#097C87',
+  dimension
+}, forwardedRef) => {
+  const internalRef = useRef<any>(null);
   const router = useRouter();
 
   const handleChartClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!chartRef.current) return;
-    const elements = getElementAtEvent(chartRef.current, event);
+    const chart = internalRef.current;
+    if (!chart) return;
+    const elements = getElementAtEvent(chart, event);
     if (elements.length > 0) {
       const { index } = elements[0];
       const clickedLabel = labels[index];
       // Engage Drilldown Route natively via query search param
-      router.push(`/drilldown?filterLabel=${encodeURIComponent(clickedLabel)}`);
+      let url = `/drilldown?filterLabel=${encodeURIComponent(clickedLabel)}`;
+      if (dimension) {
+         url += `&dimension=${encodeURIComponent(dimension)}`;
+      }
+      router.push(url);
     }
   };
 
@@ -197,8 +204,17 @@ export function BarChart({
       <h3>{title}</h3>
       <div className={styles.sub} style={{ flexShrink: 0 }}>{sub}</div>
       <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '200px' }}>
-        <Bar ref={chartRef} options={options as any} data={data} onClick={handleChartClick} />
+        <Bar 
+           ref={(node) => {
+              internalRef.current = node;
+              if (typeof forwardedRef === 'function') forwardedRef(node);
+              else if (forwardedRef) forwardedRef.current = node;
+           }} 
+           options={options as any} 
+           data={data} 
+           onClick={handleChartClick} 
+        />
       </div>
     </div>
   );
-}
+});

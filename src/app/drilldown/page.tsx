@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma, DepartmentType, AcademicRank } from '@prisma/client';
 import Link from 'next/link';
 
 const prisma = new PrismaClient();
@@ -7,9 +7,10 @@ export const revalidate = 0;
 export default async function DrilldownPage({
   searchParams,
 }: {
-  searchParams: { filterLabel?: string };
+  searchParams: { filterLabel?: string; dimension?: string };
 }) {
   const filterLabel = searchParams.filterLabel;
+  const dimension = searchParams.dimension;
 
   if (!filterLabel) {
     return (
@@ -24,29 +25,49 @@ export default async function DrilldownPage({
     );
   }
 
-  // 1. Omnibar Search: We don't strictly know if filterLabel is a Dept, Rank, or Event Title. 
-  // We'll query across multiple dimensions natively.
+  // 1. Omnibar Search Refactor: We enforce type safety.
+  const enumFilter = filterLabel.replace(/\s+/g, '');
   
+  // Safe validation against strict Enums
+  const isDept = Object.values(DepartmentType).includes(filterLabel as any) 
+                 ? filterLabel 
+                 : (Object.values(DepartmentType).includes(enumFilter as any) ? enumFilter : null);
+                 
+  const isRank = Object.values(AcademicRank).includes(filterLabel as any)
+                 ? filterLabel
+                 : (Object.values(AcademicRank).includes(enumFilter as any) ? enumFilter : null);
+
   // Try to find if it's an exact event match
   const relatedEvent = await prisma.event.findFirst({
       where: { title: filterLabel },
       select: { id: true }
   });
 
-  // Strip spaces for strict Prisma Enum matching
-  const enumFilter = filterLabel.replace(/\s+/g, '');
+  // Strict Scoping depending on dimension, dropping overlapping matches.
+  const queryOrConditions = [];
+  
+  if (dimension === 'Department' || (!dimension && isDept)) {
+      if (isDept) queryOrConditions.push({ department: isDept as any });
+  }
+  
+  if (dimension === 'Rank' || (!dimension && isRank)) {
+      if (isRank) queryOrConditions.push({ rank: isRank as any });
+  }
+  
+  if (dimension === 'Event' || (!dimension && relatedEvent)) {
+      if (relatedEvent) queryOrConditions.push({ attendances: { some: { eventId: relatedEvent.id } } });
+  }
+  
+  // Failsafe empty query
+  if (queryOrConditions.length === 0) {
+      queryOrConditions.push({ id: 'dummy_no_match' }); 
+  }
 
   const rawFacultyData = await prisma.faculty.findMany({
     where: {
-      OR: [
-        // 1. Is it a Department Click?
-        { department: filterLabel as any },
-        { department: enumFilter as any },
-        // 2. Is it a Rank Click?
-        { rank: filterLabel as any },
-        { rank: enumFilter as any },
-        // 3. Is it an Event Click? (Cross-relational query)
-        relatedEvent ? { attendances: { some: { eventId: relatedEvent.id } } } : {}
+      AND: [
+        { OR: queryOrConditions },
+        { attendances: { some: {} } }
       ]
     },
     include: {

@@ -37,7 +37,12 @@ export async function GET() {
 
        const faculty = await prisma.faculty.upsert({
          where: { email: email.toLowerCase() },
-         update: {},
+         update: {
+           rank: coreRank,
+           department: coreDept,
+           division: profile.division || inferred.inferredDivision || 'Other',
+           degrees: inferred.inferredDegrees
+         },
          create: {
            firstName: inferred.cleanName.split(' ')[0] || 'Unknown',
            lastName: inferred.cleanName.split(' ').slice(1).join(' ') || 'Unknown',
@@ -87,10 +92,12 @@ export async function GET() {
     const personDates = legacyData.person_dates || {};
     let attendanceSeeded = 0;
 
+    // Prevent N+1: Cache active registry ONCE before processing orphans
+    const allActive = await prisma.faculty.findMany({ select: { id: true, aliases: true, firstName: true, lastName: true } });
+
     for (const rawName of Object.keys(personDates)) {
       const fakeEmail = `legacy_${Math.random().toString(36).substring(7)}@pending.com`;
       const inferred = extractCanonicalIdentity(rawName, fakeEmail, 0);
-      
       
       let personRecord = await prisma.faculty.findFirst({
         where: {
@@ -101,15 +108,12 @@ export async function GET() {
         }
       });
       
-      // Trust Engine Fallback: DNA Match orphaned raw names to active identities natively
+      // Trust Engine Fallback: DNA Match orphaned raw names using Local Cache
       if (!personRecord) {
-         const allActive = await prisma.faculty.findMany({ select: { id: true, aliases: true, firstName: true, lastName: true } });
          for (const cand of allActive) {
             const composite = cand.firstName + ' ' + cand.lastName;
             if (isDnaMatch(composite, rawName, 0.70) || cand.aliases.some(a => isDnaMatch(a, rawName, 0.85))) {
-               personRecord = await prisma.faculty.findUnique({ where: { id: cand.id } });
-               // Physically stitch the orphan alias back so it's globally tracked next time
-               await prisma.faculty.update({
+               personRecord = await prisma.faculty.update({
                   where: { id: cand.id },
                   data: { aliases: { push: rawName } }
                });
@@ -117,7 +121,30 @@ export async function GET() {
             }
          }
       }
-if (!personRecord) continue;
+
+      // NO SILENT DROPS: If still no match, forcefully register as a Pending Ghost to maintain historical logs
+      if (!personRecord) {
+         personRecord = await prisma.faculty.create({
+            data: {
+               firstName: inferred.cleanName.split(' ')[0] || 'Unknown',
+               lastName: inferred.cleanName.split(' ').slice(1).join(' ') || rawName,
+               email: fakeEmail,
+               aliases: [rawName],
+               status: 'PENDING_RESOLUTION',
+               rank: 'Unknown',
+               department: 'Other',
+               division: 'Other'
+            }
+         });
+         
+         // Push to local cache in case subsequent orphans match this new ghost
+         allActive.push({
+           id: personRecord.id,
+           aliases: personRecord.aliases,
+           firstName: personRecord.firstName,
+           lastName: personRecord.lastName
+         });
+      }
 
       const sessionsArray = personDates[rawName];
       for (const historyRecord of sessionsArray) {

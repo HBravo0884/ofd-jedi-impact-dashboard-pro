@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { BarChart } from '@/components/DashboardChart/DashboardChart';
 
 // Strict HTML Palette mapped array
@@ -16,27 +16,31 @@ export default function SeriesClient({ seriesData }: { seriesData: any[] }) {
 
   const activeSeries = seriesData[activeIndex];
 
+  const chartRef = useRef<any>(null);
+
   const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,Event Title,Attendances\n";
+    let csvContent = "Event Title,Attendances\n";
     activeSeries.chartLabels.forEach((label: string, index: number) => {
       const row = `"${label.replace(/"/g, '""')}",${activeSeries.chartCounts[index]}`;
       csvContent += row + "\n";
     });
     
-    const encodedUri = encodeURI(csvContent);
+    // Safely generate CSV via Blob to prevent # truncations in standard URIs
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `${activeSeries.title.replace(/\s+/g, '_')}_data.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportPNG = () => {
-    // Specifically target the canvas inside the active chart
-    const canvas = document.querySelector('.series-chart-container canvas') as HTMLCanvasElement;
-    if (canvas) {
-      const img = canvas.toDataURL("image/png");
+    // Rely on React Refs via Chart.js forwardRef instead of vanilla DOM scraping
+    if (chartRef.current) {
+      const img = chartRef.current.toBase64Image();
       const link = document.createElement("a");
       link.setAttribute("href", img);
       link.setAttribute("download", `${activeSeries.title.replace(/\s+/g, '_')}_graph.png`);
@@ -44,7 +48,7 @@ export default function SeriesClient({ seriesData }: { seriesData: any[] }) {
       link.click();
       document.body.removeChild(link);
     } else {
-      alert("Graph rendering not complete.");
+      alert("Graph rendering not complete or reference lost.");
     }
   };
 
@@ -114,6 +118,7 @@ export default function SeriesClient({ seriesData }: { seriesData: any[] }) {
           
           <div className="series-chart-container" style={{ minHeight: '400px' }}>
             <BarChart 
+                ref={chartRef}
                 title={activeSeries.title}
                 sub={`Highest Attended: ${activeSeries.topEventTitle} (${activeSeries.topEventHits} participants).`}
                 labels={activeSeries.chartLabels}

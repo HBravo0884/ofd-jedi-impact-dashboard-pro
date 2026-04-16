@@ -7,7 +7,7 @@ export default async function DirectoryPage() {
   let faculty: any[] = [];
   try {
     faculty = await prisma.faculty.findMany({
-      where: { status: 'VERIFIED' },
+      where: { status: 'VERIFIED', attendances: { some: {} } },
       orderBy: { lastName: 'asc' },
       include: { _count: { select: { attendances: true } } }
     });
