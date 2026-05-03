@@ -11,12 +11,10 @@ export default function IngestionPortal() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState('');
 
-  // Event Metadata State
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [baseDuration, setBaseDuration] = useState('60');
 
-  // Secure Drag-and-Drop Handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -27,7 +25,6 @@ export default function IngestionPortal() {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        // Strip out Zoom system meta-rows and keep actual person rows
         const cleanedData = results.data.filter((row: any) => row['Name (Original Name)']);
         setCsvData(cleanedData);
         setIsParsing(false);
@@ -69,7 +66,7 @@ export default function IngestionPortal() {
       const resData = await response.json();
       
       setUploadSuccess(`Success! ${resData.recordsVerified} strictly authenticated records mapped to event: '${resData.eventCreated}'`);
-      setCsvData([]); // Clear sandbox grid
+      setCsvData([]);
     } catch (error) {
       alert("Critical Error executing Deep Write. Check the engineering logs.");
       console.error(error);
@@ -111,23 +108,23 @@ export default function IngestionPortal() {
             </h3>
 
             {/* Event Binding Form */}
-            <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'var(--bg)', padding: '15px', borderRadius: '8px' }}>
-               <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'var(--bg)', padding: '15px', borderRadius: '8px', flexWrap: 'wrap' }}>
+               <div style={{ flex: 1, minWidth: '180px' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--muted)', marginBottom: '5px' }}>Bind to Event Title</label>
                   <input type="text" placeholder="e.g. Cancer Research Seminar" value={eventTitle} onChange={e => setEventTitle(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} />
                </div>
-               <div style={{ flex: 1 }}>
+               <div style={{ flex: 1, minWidth: '140px' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--muted)', marginBottom: '5px' }}>Official Date</label>
                   <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} />
                </div>
-               <div style={{ width: '120px' }}>
+               <div style={{ width: '120px', flexShrink: 0 }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--muted)', marginBottom: '5px' }}>Duration (min)</label>
                   <input type="number" value={baseDuration} onChange={e => setBaseDuration(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} />
                </div>
             </div>
             
-            <div style={{ overflowX: 'auto', maxHeight: '400px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <div style={{ overflowX: 'auto', maxHeight: '400px', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', minWidth: '480px' }}>
                 <thead style={{ background: 'var(--c1d)', color: 'white', position: 'sticky', top: 0 }}>
                   <tr>
                     <th style={{ padding: '10px' }}>Zoom Name Evaluated</th>
@@ -148,7 +145,6 @@ export default function IngestionPortal() {
                         <td style={{ padding: '10px', color: 'var(--muted)' }}>{email}</td>
                         <td style={{ padding: '10px' }}>{durationStr} min</td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>
-                           {/* Placeholder for DB Logic */}
                            <span style={{ background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', color: 'var(--muted)'}}>Pending DB Match</span>
                         </td>
                       </tr>
@@ -158,7 +154,7 @@ export default function IngestionPortal() {
               </table>
             </div>
 
-            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '15px' }}>
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
               {isUploading && <span style={{ color: 'var(--warm-4)', fontWeight: 'bold' }}>Executing Cloud Write...</span>}
               <button 
                 onClick={handleDeepWriteCommit}
