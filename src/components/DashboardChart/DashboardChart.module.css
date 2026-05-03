@@ -43,6 +43,7 @@
   .chartCard { padding: 12px 14px; }
   .chartCard h3 { font-size: .68rem; }
   .stackedTitle { font-size: .95rem; }
-  .chartWrapper { height: auto; }
+  /* Keep explicit height — Chart.js needs a container height when maintainAspectRatio:false */
+  .chartWrapper { height: 220px; }
   .sub { font-size: .65rem; margin-bottom: 8px; }
 }

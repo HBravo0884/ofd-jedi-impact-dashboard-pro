@@ -18,7 +18,7 @@ export default function RootLayout({
       <body>
         <header>
           <img src="/hucm_logo.png" className="hdr-logo" alt="HUCM Seal" />
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontFamily: '"Garamond", "EB Garamond", serif', fontSize: '1.4rem' }}>
               Howard University College of Medicine — Impact Dashboard
             </h1>
