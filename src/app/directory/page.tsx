@@ -23,7 +23,8 @@ export default async function DirectoryPage() {
       <div className="sub">Directory securely mirrors the verified Cloud Database.</div>
       
       <div style={{ marginTop: '20px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-         <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', minWidth: '480px' }}>
             <thead>
                <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   <th style={{ padding: '8px', color: 'var(--c1d)' }}>Name</th>
@@ -42,7 +43,8 @@ export default async function DirectoryPage() {
                   </tr>
                ))}
             </tbody>
-         </table>
+          </table>
+        </div>
       </div>
      </>
   );

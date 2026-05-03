@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
-import Image from 'next/image';
 import { TopNav } from '@/components/TopNav';
 
 export const metadata: Metadata = {
@@ -18,7 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <header>
-          <img src="/hucm_logo.png" style={{ width: '90px', height: '90px', objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.2))' }} alt="HUCM Seal" />
+          <img src="/hucm_logo.png" className="hdr-logo" alt="HUCM Seal" />
           <div>
             <h1 style={{ fontFamily: '"Garamond", "EB Garamond", serif', fontSize: '1.4rem' }}>
               Howard University College of Medicine — Impact Dashboard

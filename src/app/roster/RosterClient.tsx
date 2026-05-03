@@ -30,11 +30,11 @@ export default function RosterClient({ events }: { events: any[] }) {
           Session Signup Sheet (Event Roster)
        </h3>
 
-       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
+       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap' }}>
           <select 
              value={selectedEventId}
              onChange={(e) => setSelectedEventId(e.target.value)}
-             style={{ flex: 1, padding: '10px 14px', borderRadius: '6px', border: '1px solid #097c87', fontSize: '0.9rem', color: '#0f1e2d', fontWeight: 600, background: '#f8fafc', outline: 'none', cursor: 'pointer' }}
+             style={{ flex: 1, minWidth: '200px', padding: '10px 14px', borderRadius: '6px', border: '1px solid #097c87', fontSize: '0.9rem', color: '#0f1e2d', fontWeight: 600, background: '#f8fafc', outline: 'none', cursor: 'pointer' }}
           >
              {events.length === 0 && <option value="">No Events Found</option>}
              {events.map(ev => (
@@ -51,8 +51,8 @@ export default function RosterClient({ events }: { events: any[] }) {
        </div>
 
        {activeEvent && activeEvent.attendees.length > 0 ? (
-           <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #097c87' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+           <div style={{ borderRadius: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid #097c87' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem', minWidth: '560px' }}>
                  <thead style={{ background: '#097c87', color: '#fff' }}>
                     <tr>
                        <th style={{ padding: '12px 20px', fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '0.5px' }}>Attendee Name</th>
