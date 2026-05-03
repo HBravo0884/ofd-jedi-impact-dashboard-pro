@@ -37,7 +37,7 @@ export interface BarDataPoint {
   tooltipLabel?: string;
   colors?: string | string[];
   dimension?: string;
-  indexAxis?: 'x' | 'y'; // Expose direction
+  indexAxis?: 'x' | 'y';
 }
 
 export interface BubbleDataPoint {
@@ -99,7 +99,7 @@ export function BubbleChart({ points }: BubbleChartProps) {
           display: false,
         },
         ticks: {
-          display: false // Hide Y-Axis ticks strictly for Jitter maps
+          display: false
         }
       }
     }
@@ -184,7 +184,6 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
     if (elements.length > 0) {
       const { index } = elements[0];
       const clickedLabel = labels[index];
-      // Engage Drilldown Route natively via query search param
       let url = `/drilldown?filterLabel=${encodeURIComponent(clickedLabel)}`;
       if (dimension) {
          url += `&dimension=${encodeURIComponent(dimension)}`;
@@ -242,15 +241,15 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
 
   return (
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-         <h3 style={{ margin: 0, paddingRight: '12px' }}>{title}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+         <h3 style={{ margin: 0, paddingRight: '4px' }}>{title}</h3>
          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
              <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>▼ CSV</button>
              <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>🖼 PNG</button>
          </div>
       </div>
       <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px' }}>{sub}</div>
-      <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '200px' }}>
+      <div className={styles.chartWrapper} style={{ flex: 1, minHeight: 0 }}>
         <Bar 
            ref={(node) => {
               internalRef.current = node;
@@ -275,7 +274,7 @@ export interface StackedDataset {
   borderDash?: number[];
   borderWidth?: number;
   pointRadius?: number;
-  order?: number; // Lower orders draw on top
+  order?: number;
 }
 
 export interface StackedBarDataPoint {
@@ -297,7 +296,6 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
 
   const handleExportCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Complex CSV export for stacked matrix
     const header = ["Category", ...datasets.map(d => d.label.replace(/,/g, ''))].join(',');
     let csvContent = header + "\n";
     
@@ -349,7 +347,6 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
            color: '#5a8a8f',
            usePointStyle: true,
            filter: function(item: any) {
-              // Hide line/averages from the color legend dynamically if they contain 'Avg'
               return !item.text.includes('Avg');
            }
         }
@@ -388,18 +385,17 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
     datasets: datasets.length ? datasets : [{ label: 'Empty', data: [0], backgroundColor: '#ccc' }],
   };
 
-  // Stacked supports mixed types (Line + Bar), so we use ReactChart
   return (
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-         <h3 style={{ margin: 0, paddingRight: '12px', color: '#097c87', fontSize: '1.25rem' }}>{title}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+         <h3 className={styles.stackedTitle}>{title}</h3>
          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
              <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>CSV dataset</button>
              <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>PNG image</button>
          </div>
       </div>
       {sub && <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px', color: '#5a8a8f', fontSize: '0.85rem' }}>{sub}</div>}
-      <div className={styles.chartWrapper} style={{ flexGrow: 1, minHeight: '350px', marginTop: '16px' }}>
+      <div className={styles.chartWrapper} style={{ flex: 1, minHeight: 0, marginTop: '12px' }}>
         <ReactChart 
            type='bar'
            ref={(node) => {
