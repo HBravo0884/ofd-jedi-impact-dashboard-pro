@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: '/drilldown', label: 'Impact Drilldown' },
   { href: '/roster', label: 'Event Roster' },
   { href: '/directory', label: 'Directory' },
+  { href: '/kiosk', label: 'Kiosk' },
   { href: '/methods', label: 'Data & Methods' },
 ];
 
@@ -18,12 +19,10 @@ export function TopNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  // Close menu when route changes
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -32,7 +31,6 @@ export function TopNav() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // Lock body scroll when drawer open
   useEffect(() => {
     if (open) {
       const prev = document.body.style.overflow;

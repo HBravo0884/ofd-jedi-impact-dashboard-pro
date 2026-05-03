@@ -14,7 +14,7 @@ import {
 } from 'chart.js';
 import { Bubble, Bar, Chart as ReactChart, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 ChartJS.register(
@@ -57,21 +57,17 @@ export function BubbleChart({ points }: BubbleChartProps) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        display: false,
-      },
-      title: {
-        display: false,
-      },
+      legend: { display: false },
+      title: { display: false },
       tooltip: {
         backgroundColor: '#fff',
         titleColor: '#0d2e32',
         bodyColor: '#0d2e32',
         borderColor: '#d4eaec',
         borderWidth: 1,
-        titleFont: { size: 13, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
-        bodyFont: { size: 12, family: "'Segoe UI', Arial, sans-serif" },
-        padding: 10,
+        titleFont: { size: 12, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
+        bodyFont: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
+        padding: 8,
         cornerRadius: 6,
         displayColors: false,
         callbacks: {
@@ -84,23 +80,14 @@ export function BubbleChart({ points }: BubbleChartProps) {
     },
     scales: {
       x: {
-        title: { display: true, text: 'Total Sessions Attended', font: { weight: 'bold' } },
-        grid: {
-          color: '#e4f1f2',
-        },
-        ticks: {
-          color: '#5a8a8f',
-          stepSize: 1
-        }
+        title: { display: true, text: 'Total Sessions Attended', font: { weight: 'bold' as const, size: 9 }, color: '#5a8a8f' },
+        grid: { color: '#e4f1f2' },
+        ticks: { color: '#5a8a8f', stepSize: 1, font: { size: 9 } }
       },
       y: {
-        title: { display: true, text: 'Categorical Spread (Jitter)', font: { weight: 'bold' } },
-        grid: {
-          display: false,
-        },
-        ticks: {
-          display: false
-        }
+        title: { display: true, text: 'Spread (Jitter)', font: { weight: 'bold' as const, size: 9 }, color: '#5a8a8f' },
+        grid: { display: false },
+        ticks: { display: false }
       }
     }
   };
@@ -146,10 +133,9 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
     e.stopPropagation();
     let csvContent = "Category,Value\n";
     labels.forEach((label: string, index: number) => {
-      const row = `"${label.replace(/"/g, '""')}",${counts[index]}`;
+      const row = `"${label.replace(/"/g, '""')}",${ counts[index]}`;
       csvContent += row + "\n";
     });
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -172,8 +158,6 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else {
-      alert("Graph rendering not complete or reference lost.");
     }
   };
 
@@ -185,9 +169,7 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
       const { index } = elements[0];
       const clickedLabel = labels[index];
       let url = `/drilldown?filterLabel=${encodeURIComponent(clickedLabel)}`;
-      if (dimension) {
-         url += `&dimension=${encodeURIComponent(dimension)}`;
-      }
+      if (dimension) url += `&dimension=${encodeURIComponent(dimension)}`;
       router.push(url);
     }
   };
@@ -206,9 +188,9 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
         bodyColor: '#0d2e32',
         borderColor: '#d4eaec',
         borderWidth: 1,
-        titleFont: { size: 12, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
-        bodyFont: { size: 12, family: "'Segoe UI', Arial, sans-serif" },
-        padding: 10,
+        titleFont: { size: 11, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
+        bodyFont: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
+        padding: 8,
         cornerRadius: 4,
         displayColors: false,
       }
@@ -216,12 +198,12 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
     scales: {
       x: {
         grid: { color: '#d4eaec' },
-        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, precision: 0 },
+        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif", size: 9 }, precision: 0 },
         beginAtZero: true
       },
       y: {
         grid: { display: false },
-        ticks: { color: '#0d2e32', font: { family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const } }
+        ticks: { color: '#0d2e32', font: { family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const, size: 9 } }
       }
     }
   };
@@ -241,29 +223,41 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
 
   return (
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-         <h3 style={{ margin: 0, paddingRight: '4px' }}>{title}</h3>
-         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-             <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>▼ CSV</button>
-             <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}>🖼 PNG</button>
-         </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, paddingRight: '4px' }}>{title}</h3>
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+          <button onClick={handleExportCSV} style={btnStyle}>▼ CSV</button>
+          <button onClick={handleExportPNG} style={btnStyle}>🖼 PNG</button>
+        </div>
       </div>
       <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px' }}>{sub}</div>
       <div className={styles.chartWrapper} style={{ flex: 1, minHeight: 0 }}>
-        <Bar 
-           ref={(node) => {
-              internalRef.current = node;
-              if (typeof forwardedRef === 'function') forwardedRef(node);
-              else if (forwardedRef) forwardedRef.current = node;
-           }} 
-           options={options as any} 
-           data={data} 
-           onClick={handleChartClick} 
+        <Bar
+          ref={(node) => {
+            internalRef.current = node;
+            if (typeof forwardedRef === 'function') forwardedRef(node);
+            else if (forwardedRef) forwardedRef.current = node;
+          }}
+          options={options as any}
+          data={data}
+          onClick={handleChartClick}
         />
       </div>
     </div>
   );
 });
+BarChart.displayName = 'BarChart';
+
+const btnStyle: React.CSSProperties = {
+  background: '#f0f7f8',
+  border: '1px solid #d4eaec',
+  borderRadius: '4px',
+  padding: '2px 6px',
+  fontSize: '0.65rem',
+  fontWeight: 600,
+  color: '#065e68',
+  cursor: 'pointer',
+};
 
 export interface StackedDataset {
   label: string;
@@ -293,17 +287,16 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
   indexAxis = 'x'
 }, forwardedRef) => {
   const internalRef = useRef<any>(null);
+  const [showLegend, setShowLegend] = useState(false);
 
   const handleExportCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
     const header = ["Category", ...datasets.map(d => d.label.replace(/,/g, ''))].join(',');
     let csvContent = header + "\n";
-    
     labels.forEach((label: string, index: number) => {
       const rowVals = datasets.map(d => d.data[index] || 0);
-      csvContent += `"${label.replace(/"/g, '""')}",${rowVals.join(',')}\n`;
+      csvContent += `"${label.replace(/"/g, '""')}",${ rowVals.join(',') }\n`;
     });
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -333,22 +326,21 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
     indexAxis: indexAxis,
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      mode: 'index' as const,
-      intersect: false,
-    },
+    interaction: { mode: 'index' as const, intersect: false },
     plugins: {
       legend: {
-        display: true,
-        position: 'top' as const,
+        display: showLegend,
+        position: 'bottom' as const,
         labels: {
-           boxWidth: 12,
-           font: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
-           color: '#5a8a8f',
-           usePointStyle: true,
-           filter: function(item: any) {
-              return !item.text.includes('Avg');
-           }
+          boxWidth: 10,
+          boxHeight: 10,
+          font: { size: 9, family: "'Segoe UI', Arial, sans-serif" },
+          color: '#5a8a8f',
+          usePointStyle: true,
+          padding: 8,
+          filter: function(item: any) {
+            return !item.text.includes('Avg');
+          }
         }
       },
       title: { display: false },
@@ -358,10 +350,10 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
         bodyColor: '#0d2e32',
         borderColor: '#d4eaec',
         borderWidth: 1,
-        titleFont: { size: 13, family: "'Inter', sans-serif", weight: 'bold' as const },
-        bodyFont: { size: 12, family: "'Inter', sans-serif", weight: 500 as const },
-        padding: 10,
-        boxPadding: 6,
+        titleFont: { size: 11, family: "'Segoe UI', Arial, sans-serif", weight: 'bold' as const },
+        bodyFont: { size: 11, family: "'Segoe UI', Arial, sans-serif", weight: 500 as const },
+        padding: 8,
+        boxPadding: 4,
         cornerRadius: 6,
         usePointStyle: true
       }
@@ -370,12 +362,22 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
       x: {
         stacked: true,
         grid: { color: indexAxis === 'x' ? 'transparent' : '#f0f7f8' },
-        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, autoSkip: false, maxRotation: 45, minRotation: 0 }
+        ticks: {
+          color: '#5a8a8f',
+          font: { family: "'Segoe UI', Arial, sans-serif", size: 9 },
+          autoSkip: false,
+          maxRotation: 45,
+          minRotation: 0
+        }
       },
       y: {
         stacked: true,
         grid: { color: indexAxis === 'y' ? 'transparent' : '#f0f7f8' },
-        ticks: { color: '#5a8a8f', font: { family: "'Segoe UI', Arial, sans-serif" }, precision: 0 }
+        ticks: {
+          color: '#5a8a8f',
+          font: { family: "'Segoe UI', Arial, sans-serif", size: 9 },
+          precision: 0
+        }
       }
     }
   };
@@ -388,25 +390,37 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
   return (
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
-         <h3 className={styles.stackedTitle}>{title}</h3>
-         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-             <button onClick={handleExportCSV} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>CSV dataset</button>
-             <button onClick={handleExportPNG} style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: '4px', padding: '4px 8px', fontSize: '0.7rem', fontWeight: 600, color: '#065e68', cursor: 'pointer', transition: '0.2s' }}>PNG image</button>
-         </div>
+        <h3 className={styles.stackedTitle}>{title}</h3>
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowLegend(v => !v)}
+            style={{
+              ...btnStyle,
+              background: showLegend ? 'var(--c1)' : '#f0f7f8',
+              color: showLegend ? '#fff' : '#065e68',
+              border: `1px solid ${showLegend ? 'var(--c1)' : '#d4eaec'}`,
+            }}
+          >
+            {showLegend ? '▲ Hide Key' : '▼ Show Key'}
+          </button>
+          <button onClick={handleExportCSV} style={btnStyle}>▼ CSV</button>
+          <button onClick={handleExportPNG} style={btnStyle}>🖼 PNG</button>
+        </div>
       </div>
-      {sub && <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px', color: '#5a8a8f', fontSize: '0.85rem' }}>{sub}</div>}
-      <div className={styles.chartWrapper} style={{ flex: 1, minHeight: 0, marginTop: '12px' }}>
-        <ReactChart 
-           type='bar'
-           ref={(node) => {
-              internalRef.current = node;
-              if (typeof forwardedRef === 'function') forwardedRef(node);
-              else if (forwardedRef) forwardedRef.current = node;
-           }} 
-           options={options as any} 
-           data={data} 
+      {sub && <div className={styles.sub} style={{ flexShrink: 0, marginTop: '4px', color: '#5a8a8f', fontSize: '0.8rem' }}>{sub}</div>}
+      <div className={styles.chartWrapper} style={{ flex: 1, minHeight: 0, marginTop: '10px' }}>
+        <ReactChart
+          type='bar'
+          ref={(node) => {
+            internalRef.current = node;
+            if (typeof forwardedRef === 'function') forwardedRef(node);
+            else if (forwardedRef) forwardedRef.current = node;
+          }}
+          options={options as any}
+          data={data}
         />
       </div>
     </div>
   );
 });
+StackedBarChart.displayName = 'StackedBarChart';
