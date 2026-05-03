@@ -30,7 +30,8 @@ export default async function EngagementPage() {
         bubblePoints.push({
           x: atnd,
           y: yJitter,
-          r: Math.max(8, 6 + (atnd * 2.5)),
+          // Area-proportional with a hard cap so bubbles stay readable at any scale
+          r: Math.max(4, Math.min(14, 4 + atnd)),
           name: `${fac.firstName} ${fac.lastName}`,
           dept: fac.department.replace(/([A-Z])/g, ' $1').trim()
         });
