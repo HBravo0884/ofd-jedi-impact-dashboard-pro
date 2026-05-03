@@ -15,9 +15,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
 
   const activeSeries = seriesData[activeIndex];
 
-  // Derive Audience Composition Single-Stack
   const compositionDatasets = activeSeries.sessionMatrixDatasets.map((dataSet: any) => {
-    // Sum total attendance for this department across the entire series
     const totalDeptAttendance = dataSet.data.reduce((sum: number, val: number) => sum + val, 0);
     return {
       label: dataSet.label,
@@ -26,7 +24,6 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
     };
   });
 
-  // Inject "Series Avg" line overlay into the Individual Sessions Stack
   const individualSessionsMatrix = [
     ...activeSeries.sessionMatrixDatasets,
     {
@@ -38,7 +35,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       borderWidth: 2,
       borderDash: [5, 5],
       pointRadius: 0,
-      order: 0 // Draw on top
+      order: 0
     }
   ];
 
@@ -73,20 +70,20 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
 
       {/* COMPOSITION & PENETRATION STRATEGY */}
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
             <h2 style={{ fontSize: '1.1rem', color: '#0f1e2d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
-               Composition & Penetration Strategy
+               Composition &amp; Penetration Strategy
             </h2>
             <select style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: 600, color: '#334155', background: '#f8fafc' }}>
                <option>By Department</option>
             </select>
          </div>
 
-         <div style={{ display: 'flex', width: '100%', gap: '32px', minHeight: '380px' }}>
+         <div className="series-comp-row">
             {/* Left: Overall Composition Single Stack */}
-            <div style={{ flex: '0 0 240px', borderRight: '1px dashed #cbd5e1', paddingRight: '24px' }}>
+            <div className="series-comp-sidebar">
                 <h3 style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', textAlign: 'center', marginBottom: '8px' }}>Audience Composition</h3>
-                <div style={{ height: '300px' }}>
+                <div className="chart-h-300">
                   <StackedBarChart 
                      title=""
                      labels={['']}
@@ -99,7 +96,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
             {/* Right: Penetration Horizontal/Vertical Bars */}
             <div style={{ flex: 1 }}>
                 <h3 style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', textAlign: 'center', marginBottom: '8px' }}>Roster Penetration (Engaged Distribution)</h3>
-                <div style={{ height: '300px' }}>
+                <div className="chart-h-300">
                   <BarChart 
                      title=""
                      sub=""
@@ -125,7 +122,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
          <h2 style={{ fontSize: '1.1rem', color: '#097c87', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0, marginBottom: '24px' }}>
             {activeSeries.title} — Individual Sessions
          </h2>
-         <div style={{ height: '450px' }}>
+         <div className="chart-h-450">
             <StackedBarChart 
                title=""
                labels={activeSeries.chartLabels}
@@ -140,7 +137,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
          <h2 style={{ fontSize: '1.1rem', color: '#0f1e2d', fontWeight: 700, margin: 0, marginBottom: '24px' }}>
             All Sessions — Attendance Timeline
          </h2>
-         <div style={{ height: '350px' }}>
+         <div className="chart-h-350">
             <BarChart 
                title=""
                sub=""

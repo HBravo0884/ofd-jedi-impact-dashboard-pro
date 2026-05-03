@@ -10,26 +10,26 @@
   /* =========================================
      EXTENDED 20-COLOR PALETTE (Vision Extracted)
   ========================================= */
-  --warm-1: #9b1414; /* Deep Burgundy */
-  --warm-2: #d22b27; /* Rich Red */
-  --warm-3: #e23e27; /* Tomato Red */
-  --warm-4: #f45020; /* Vibrant Orange */
-  --warm-5: #fbb034; /* Amber Orange */
-  --green-1: #033235; /* Obsidian Green */
-  --green-2: #0b4f4f; /* Dark Pine */
-  --green-3: #1b6d5e; /* Forest Teal */
-  --green-4: #317f73; /* Sea Glass Green */
-  --green-5: #6ac5a9; /* Mint Green */
-  --blue-1: #8fbaaa;  /* Muted Sage */
-  --blue-2: #0a254f;  /* Deep Navy */
-  --blue-3: #084365;  /* Ocean Indigo */
-  --blue-4: #1c7294;  /* Steel Blue */
-  --blue-5: #288f9f;  /* Bright Teal */
-  --mix-1: #4ba08d;   /* Dusty Turquoise */
-  --mix-2: #659eb6;   /* Cornflower Blue */
-  --mix-3: #bce1ee;   /* Ice Blue */
-  --mix-4: #ffce12;   /* Sunny Yellow */
-  --mix-5: #d4a706;   /* Mustard Gold */
+  --warm-1: #9b1414;
+  --warm-2: #d22b27;
+  --warm-3: #e23e27;
+  --warm-4: #f45020;
+  --warm-5: #fbb034;
+  --green-1: #033235;
+  --green-2: #0b4f4f;
+  --green-3: #1b6d5e;
+  --green-4: #317f73;
+  --green-5: #6ac5a9;
+  --blue-1: #8fbaaa;
+  --blue-2: #0a254f;
+  --blue-3: #084365;
+  --blue-4: #1c7294;
+  --blue-5: #288f9f;
+  --mix-1: #4ba08d;
+  --mix-2: #659eb6;
+  --mix-3: #bce1ee;
+  --mix-4: #ffce12;
+  --mix-5: #d4a706;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
@@ -100,6 +100,15 @@ header p{font-size:.76rem;opacity:.82;margin-top:3px}
 
 .sec{font-size:.9rem;font-weight:700;color:var(--c1d);margin:4px 0 16px;padding-bottom:6px;border-bottom:2px solid var(--border)}
 
+/* ========= SUBPAGE PANEL LAYOUTS ========= */
+.panel-row{display:flex;gap:24px;align-items:stretch}
+.series-comp-row{display:flex;width:100%;gap:32px;min-height:380px}
+.series-comp-sidebar{flex:0 0 240px;border-right:1px dashed #cbd5e1;padding-right:24px}
+.chart-h-450{height:450px}
+.chart-h-350{height:350px}
+.chart-h-316{height:316px}
+.chart-h-300{height:300px}
+
 /* =========================================
    MOBILE RESPONSIVE
 ========================================= */
@@ -140,6 +149,22 @@ header p{font-size:.76rem;opacity:.82;margin-top:3px}
   }
 
   .sec { margin-bottom: 12px; }
+
+  /* Subpage panels */
+  .panel-row { flex-direction: column; }
+  .series-comp-row { flex-direction: column; min-height: unset; gap: 16px; }
+  .series-comp-sidebar {
+    flex: none;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px dashed #cbd5e1;
+    padding-right: 0;
+    padding-bottom: 16px;
+  }
+  .chart-h-450 { height: 280px; }
+  .chart-h-350 { height: 220px; }
+  .chart-h-316 { height: 220px; }
+  .chart-h-300 { height: 200px; }
 }
 
 @media (max-width: 480px) {
