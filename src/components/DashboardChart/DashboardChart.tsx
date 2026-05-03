@@ -14,7 +14,7 @@ import {
 } from 'chart.js';
 import { Bubble, Bar, Chart as ReactChart, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 ChartJS.register(
@@ -283,7 +283,6 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
   indexAxis = 'x'
 }, forwardedRef) => {
   const internalRef = useRef<any>(null);
-  const [showLegend, setShowLegend] = useState(false);
 
   const handleExportCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -317,17 +316,7 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
     maintainAspectRatio: false,
     interaction: { mode: 'index' as const, intersect: false },
     plugins: {
-      legend: {
-        display: showLegend,
-        position: 'bottom' as const,
-        labels: {
-          boxWidth: 10, boxHeight: 10, padding: 8,
-          font: { size: 9, family: "'Segoe UI', Arial, sans-serif" },
-          color: '#5a8a8f',
-          usePointStyle: true,
-          filter: (item: any) => !item.text.includes('Avg'),
-        }
-      },
+      legend: { display: false },
       title: { display: false },
       tooltip: {
         backgroundColor: 'rgba(255,255,255,0.95)',
@@ -372,19 +361,7 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
     <div className={styles.chartCard} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
         <h3 className={styles.stackedTitle}>{title}</h3>
-        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setShowLegend(v => !v)}
-            title={showLegend ? 'Hide color key' : 'Show color key'}
-            style={{
-              ...btnStyle,
-              background: showLegend ? 'var(--c1)' : '#f0f7f8',
-              color: showLegend ? '#fff' : '#065e68',
-              border: `1px solid ${showLegend ? 'var(--c1)' : '#d4eaec'}`,
-            }}
-          >
-            ■ Key
-          </button>
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           <button onClick={handleExportCSV} style={btnStyle}>▼ CSV</button>
           <button onClick={handleExportPNG} style={btnStyle}>🖼 PNG</button>
         </div>
