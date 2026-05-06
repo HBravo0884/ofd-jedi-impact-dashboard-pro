@@ -15,9 +15,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
 
   const activeSeries = seriesData[activeIndex];
 
-  // Derive Audience Composition Single-Stack
   const compositionDatasets = activeSeries.sessionMatrixDatasets.map((dataSet: any) => {
-    // Sum total attendance for this department across the entire series
     const totalDeptAttendance = dataSet.data.reduce((sum: number, val: number) => sum + val, 0);
     return {
       label: dataSet.label,
@@ -26,7 +24,6 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
     };
   });
 
-  // Inject "Series Avg" line overlay into the Individual Sessions Stack
   const individualSessionsMatrix = [
     ...activeSeries.sessionMatrixDatasets,
     {
@@ -38,14 +35,22 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       borderWidth: 2,
       borderDash: [5, 5],
       pointRadius: 0,
-      order: 0 // Draw on top
+      order: 0
     }
   ];
 
+  const cardStyle: React.CSSProperties = {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: 'clamp(14px, 3vw, 24px)',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      {/* Series Selection Navigation */}
+      {/* Series Selection Pills */}
       <div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
           {seriesData.map((s, idx) => (
@@ -72,9 +77,9 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       </div>
 
       {/* COMPOSITION & PENETRATION STRATEGY */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-            <h2 style={{ fontSize: '1.1rem', color: '#0f1e2d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+      <div style={cardStyle}>
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.05rem', color: '#0f1e2d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
                Composition & Penetration Strategy
             </h2>
             <select style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: 600, color: '#334155', background: '#f8fafc' }}>
@@ -82,11 +87,12 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
             </select>
          </div>
 
-         <div style={{ display: 'flex', width: '100%', gap: '32px', minHeight: '380px' }}>
-            {/* Left: Overall Composition Single Stack */}
-            <div style={{ flex: '0 0 240px', borderRight: '1px dashed #cbd5e1', paddingRight: '24px' }}>
+         {/* Side-by-side on desktop, stacked on mobile via .split-row utility */}
+         <div className="split-row" style={{ gap: '24px' }}>
+            {/* Left: Audience Composition */}
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                 <h3 style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', textAlign: 'center', marginBottom: '8px' }}>Audience Composition</h3>
-                <div style={{ height: '300px' }}>
+                <div style={{ height: 'clamp(260px, 50vw, 320px)' }}>
                   <StackedBarChart 
                      title=""
                      labels={['']}
@@ -96,10 +102,10 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
                 </div>
             </div>
 
-            {/* Right: Penetration Horizontal/Vertical Bars */}
-            <div style={{ flex: 1 }}>
+            {/* Right: Penetration */}
+            <div style={{ flex: '2 1 320px', minWidth: 0 }}>
                 <h3 style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', textAlign: 'center', marginBottom: '8px' }}>Roster Penetration (Engaged Distribution)</h3>
-                <div style={{ height: '300px' }}>
+                <div style={{ height: 'clamp(280px, 50vw, 320px)' }}>
                   <BarChart 
                      title=""
                      sub=""
@@ -112,7 +118,7 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
             </div>
          </div>
          
-         <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+         <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>Series average:</span>
             <span style={{ background: '#Fca47c', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 700 }}>
               {activeSeries.seriesAverage.toFixed(1)} / session
@@ -121,11 +127,11 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       </div>
 
       {/* INDIVIDUAL SESSIONS STACKED MATRIX */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-         <h2 style={{ fontSize: '1.1rem', color: '#097c87', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0, marginBottom: '24px' }}>
+      <div style={cardStyle}>
+         <h2 style={{ fontSize: '1.05rem', color: '#097c87', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0, marginBottom: '20px' }}>
             {activeSeries.title} — Individual Sessions
          </h2>
-         <div style={{ height: '450px' }}>
+         <div style={{ height: 'clamp(320px, 60vw, 450px)' }}>
             <StackedBarChart 
                title=""
                labels={activeSeries.chartLabels}
@@ -136,11 +142,11 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       </div>
 
       {/* ALL SESSIONS TIMELINE */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-         <h2 style={{ fontSize: '1.1rem', color: '#0f1e2d', fontWeight: 700, margin: 0, marginBottom: '24px' }}>
+      <div style={cardStyle}>
+         <h2 style={{ fontSize: '1.05rem', color: '#0f1e2d', fontWeight: 700, margin: 0, marginBottom: '20px' }}>
             All Sessions — Attendance Timeline
          </h2>
-         <div style={{ height: '350px' }}>
+         <div style={{ height: 'clamp(280px, 55vw, 350px)' }}>
             <BarChart 
                title=""
                sub=""

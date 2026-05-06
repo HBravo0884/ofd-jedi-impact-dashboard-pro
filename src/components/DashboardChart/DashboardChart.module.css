@@ -4,6 +4,7 @@
   box-shadow: var(--shadow);
   padding: 18px 20px;
   width: 100%;
+  min-width: 0;
 }
 
 .chartCard h3 {
@@ -27,4 +28,14 @@
   position: relative;
   height: 280px;
   width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .chartCard { padding: 14px 14px; }
+  .chartWrapper { height: 240px; }
+}
+
+@media (max-width: 520px) {
+  .chartWrapper { height: 220px; }
 }
