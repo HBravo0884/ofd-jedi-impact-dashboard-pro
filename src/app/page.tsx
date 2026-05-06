@@ -1,6 +1,6 @@
 import { BarChart } from '@/components/DashboardChart/DashboardChart';
 import { prisma } from '@/lib/prisma';
-import Link from 'next/link';
+import AdminTrigger from '@/components/AdminGate/AdminTrigger';
 
 export const revalidate = 0; // Ensure data stays fresh on every request
 
@@ -206,6 +206,8 @@ export default async function Home() {
          />
       </div>
 
+      {/* Hidden 5-tap admin trigger (Easter egg). */}
+      <AdminTrigger />
     </>
   );
 }
