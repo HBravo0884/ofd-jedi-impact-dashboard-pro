@@ -342,10 +342,15 @@ export const StackedBarChart = React.forwardRef<any, StackedBarDataPoint>(({
     plugins: {
       legend: {
         display: true,
-        position: 'top' as const,
+        // Right-side legend so a long department list doesn't squish the chart.
+        // Falls back to top on very narrow widths via the legend rebalancer below.
+        position: 'right' as const,
+        align: 'start' as const,
         labels: {
-           boxWidth: 12,
-           font: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
+           boxWidth: 8,
+           boxHeight: 8,
+           padding: 6,
+           font: { size: 10, family: "'Segoe UI', Arial, sans-serif" },
            color: '#5a8a8f',
            usePointStyle: true,
            filter: function(item: any) {

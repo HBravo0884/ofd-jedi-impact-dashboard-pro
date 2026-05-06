@@ -337,3 +337,7 @@ header p { font-size: 0.76rem; opacity: 0.82; margin-top: 3px; }
 @media (pointer: coarse) {
   .tab-btn, .hdr-pill, .export-btn { min-height: 36px; }
 }
+
+/* ── Header pill color variants (PR #1 parity) ──────────────────────────── */
+.hdr-pill-purple { background: #8b5cf6; }
+.hdr-pill-darkteal { background: #04434a; }

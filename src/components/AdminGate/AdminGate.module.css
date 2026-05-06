@@ -7,7 +7,7 @@
   margin: 32px 0 0;
   background: transparent;
   border: 0;
-  cursor: default;
+  cursor: pointer;
   /* Subtle dot in the center so it's discoverable if you look hard. */
   position: relative;
   -webkit-tap-highlight-color: transparent;

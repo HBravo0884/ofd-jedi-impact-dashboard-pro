@@ -1,21 +1,21 @@
-// Edge-compatible HMAC-signed admin session token.
-// Uses Web Crypto so this works in both Node and Edge runtimes (middleware).
+// Edge-compatible HMAC-signed session token.
+// Designed for incremental upgrade: today the only role we issue is 'admin',
+// but the token format (expiry.role.signature) leaves room for 'faculty' or
+// other roles without changing the cookie format.
 //
-// Design:
-//   - On login, server validates the submitted password (constant-time) against ADMIN_PASSWORD.
-//   - On success, server issues a token: `${expiry}.${hmacHex(expiry, ADMIN_SESSION_SECRET)}`.
-//   - The token is stored in an httpOnly, Secure, SameSite=Lax cookie ("admin_session").
-//   - Middleware verifies the token on every protected request: HMAC must match and not be expired.
-//   - Rotating ADMIN_SESSION_SECRET in env immediately invalidates all existing sessions.
-//
-// Defaults are safe-but-loud: if env vars aren't set, login still works (using defaults), but a
-// warning appears in server logs reminding the operator to set them in production.
+// On login: server validates the password (constant-time) against ADMIN_PASSWORD,
+// issues a token, sets it as an httpOnly+Secure+SameSite=Lax cookie ("admin_session").
+// Middleware verifies on every protected request: HMAC must match and not be expired.
+// Rotating ADMIN_SESSION_SECRET in env immediately invalidates every existing session.
 
 export const ADMIN_COOKIE_NAME = 'admin_session';
 export const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const DEFAULT_PASSWORD = '1868';
 const DEFAULT_SECRET = 'change-me-set-ADMIN_SESSION_SECRET-in-netlify-env';
+
+export type Role = 'admin' | 'faculty';
+export type Session = { role: Role };
 
 let warnedDefaults = false;
 
@@ -33,13 +33,10 @@ function getConfig() {
   return { password, secret };
 }
 
-// Constant-time string compare.
 export function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
@@ -64,26 +61,38 @@ export async function validatePassword(submitted: string): Promise<boolean> {
   return constantTimeEqual(submitted, password);
 }
 
-export async function issueToken(now: number = Date.now()): Promise<string> {
+// Token format: "<expiryMillis>.<role>.<hexHmac>"
+export async function issueToken(role: Role = 'admin', now: number = Date.now()): Promise<string> {
   const { secret } = getConfig();
   const expiry = (now + ADMIN_SESSION_TTL_MS).toString();
-  const sig = await hmacSha256Hex(expiry, secret);
-  return `${expiry}.${sig}`;
+  const payload = `${expiry}.${role}`;
+  const sig = await hmacSha256Hex(payload, secret);
+  return `${payload}.${sig}`;
 }
 
-export async function verifyToken(
+export async function verifySession(
   token: string | undefined | null,
   now: number = Date.now()
-): Promise<boolean> {
-  if (!token || typeof token !== 'string') return false;
-  const dot = token.indexOf('.');
-  if (dot < 1) return false;
-  const expiry = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
+): Promise<Session | null> {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [expiry, role, sig] = parts;
   const expiryNum = Number(expiry);
-  if (!Number.isFinite(expiryNum)) return false;
-  if (expiryNum < now) return false;
+  if (!Number.isFinite(expiryNum)) return null;
+  if (expiryNum < now) return null;
+  if (role !== 'admin' && role !== 'faculty') return null;
   const { secret } = getConfig();
-  const expected = await hmacSha256Hex(expiry, secret);
-  return constantTimeEqual(sig, expected);
+  const expected = await hmacSha256Hex(`${expiry}.${role}`, secret);
+  if (!constantTimeEqual(sig, expected)) return null;
+  return { role: role as Role };
+}
+
+// Convenience wrappers — keeps callers simple while we still only have one role.
+export async function verifyToken(token: string | undefined | null, now?: number): Promise<boolean> {
+  return (await verifySession(token, now)) !== null;
+}
+export async function verifyAdmin(token: string | undefined | null, now?: number): Promise<boolean> {
+  const s = await verifySession(token, now);
+  return s !== null && s.role === 'admin';
 }

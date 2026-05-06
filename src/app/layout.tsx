@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { TopNav } from '@/components/TopNav';
 import AdminLogoutButton from '@/components/AdminGate/AdminLogoutButton';
-import { ADMIN_COOKIE_NAME, verifyToken } from '@/lib/adminAuth';
+import { ADMIN_COOKIE_NAME, verifyAdmin } from '@/lib/adminAuth';
+import { getHeaderStats } from '@/lib/headerStats';
 
 export const metadata: Metadata = {
   title: 'HUCM Office of Faculty Development — Impact Dashboard',
@@ -24,7 +25,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const jar = await cookies();
-  const isAdmin = await verifyToken(jar.get(ADMIN_COOKIE_NAME)?.value);
+  const isAdmin = await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value);
+  const stats = await getHeaderStats();
 
   return (
     <html lang="en">
@@ -42,16 +44,45 @@ export default async function RootLayout({
             <p className="site-subtitle">Office of Faculty Development and JEDI · Programming Tracker</p>
           </div>
           <div className="hdr-badge">
-            <span className="hdr-badge-line">Cloud Synchronized Environment</span>
+            <span className="hdr-badge-line">
+              {stats.attendance.toLocaleString()} attendance records
+            </span>
+            <span className="hdr-badge-line">
+              {stats.participants.toLocaleString()} unique participants ·{' '}
+              {stats.sessions.toLocaleString()} sessions
+            </span>
             <div className="hdr-badge-actions">
-              <a
-                href="/legacy_dashboard.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hdr-pill hdr-pill-primary"
-              >
-                📈 Launch Legacy View
-              </a>
+              {isAdmin && (
+                <a
+                  href="/kiosk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hdr-pill hdr-pill-purple"
+                >
+                  📱 Launch iPad Kiosk
+                </a>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="hdr-pill hdr-pill-darkteal"
+                  onClick={undefined /* served by client island below */}
+                  data-action="print"
+                  // The actual onClick handler lives in the small client snippet
+                  // injected via <PrintButton/> so we can keep the layout server-side.
+                >
+                  🖨️ Download Graphs (PDF)
+                </button>
+              )}
+              {isAdmin && (
+                <a
+                  href="/api/admin/exports/directory.csv"
+                  className="hdr-pill hdr-pill-primary"
+                  download="HUCM_Faculty_Directory.csv"
+                >
+                  ⬇ Clean Directory CSV
+                </a>
+              )}
               {isAdmin && (
                 <Link href="/admin/ingestion" className="hdr-pill hdr-pill-orange">
                   ⚙️ Manage Data
@@ -67,6 +98,16 @@ export default async function RootLayout({
         <div className="tab-pane active" id="tab-overview">
           {children}
         </div>
+
+        {/* Tiny client island that wires up the data-action="print" buttons. */}
+        {isAdmin && (
+          <script
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{
+              __html: `document.addEventListener('click',function(e){var t=e.target;if(t&&t.getAttribute&&t.getAttribute('data-action')==='print'){window.print();}});`,
+            }}
+          />
+        )}
       </body>
     </html>
   );
