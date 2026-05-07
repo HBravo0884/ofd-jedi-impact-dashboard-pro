@@ -8,11 +8,14 @@ import {
   BarElement,
   LineElement,
   LineController,
+  ArcElement,
+  ScatterController,
+  DoughnutController,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Bubble, Bar, Chart as ReactChart, getElementAtEvent } from 'react-chartjs-2';
+import { Bubble, Bar, Doughnut, Scatter, Chart as ReactChart, getElementAtEvent } from 'react-chartjs-2';
 import styles from './DashboardChart.module.css';
 import React, { useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,10 +27,38 @@ ChartJS.register(
   BarElement,
   LineElement,
   LineController,
+  ArcElement,
+  ScatterController,
+  DoughnutController,
   Title,
   Tooltip,
   Legend
 );
+
+// ── Department-keyed color palette + stable color hash ─────────────────────
+// Used by BubbleChart, ScatterChart, DoughnutChart so the same key (e.g.
+// department or rank) always maps to the same color across charts.
+export const DEPT_PALETTE = [
+  '#097C87', '#FCA47C', '#23CED9', '#A1CCA6', '#F9D779',
+  '#1c7294', '#e07a50', '#6ac5a9', '#d22b27', '#288f9f',
+  '#317f73', '#fbb034', '#4ba08d', '#0a254f', '#9b1414',
+  '#659eb6', '#bce1ee', '#d4a706', '#1b6d5e', '#7fb585',
+];
+export function colorForKey(key: string): string {
+  if (!key) return '#888888';
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return DEPT_PALETTE[h % DEPT_PALETTE.length];
+}
+export function withAlpha(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const v = m[1];
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 export interface BarDataPoint {
   labels: string[];
@@ -56,6 +87,10 @@ export function BubbleChart({ points }: BubbleChartProps) {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      // Headroom on the right so the largest bubbles don't get clipped.
+      padding: { right: 28, top: 12, bottom: 4 },
+    },
     plugins: {
       legend: {
         display: false,
@@ -84,36 +119,37 @@ export function BubbleChart({ points }: BubbleChartProps) {
     },
     scales: {
       x: {
-        title: { display: true, text: 'Total Sessions Attended', font: { weight: 'bold' } },
-        grid: {
-          color: '#e4f1f2',
-        },
+        title: { display: true, text: 'Total Sessions Attended', font: { weight: 'bold' as const } },
+        grid: { color: '#eef5f6' },
         ticks: {
           color: '#5a8a8f',
-          stepSize: 1
-        }
+          maxTicksLimit: 10,
+          autoSkip: true,
+          precision: 0,
+        },
+        beginAtZero: true,
       },
       y: {
-        title: { display: true, text: 'Categorical Spread (Jitter)', font: { weight: 'bold' } },
-        grid: {
-          display: false,
-        },
-        ticks: {
-          display: false // Hide Y-Axis ticks strictly for Jitter maps
-        }
+        // Jitter has no real meaning to readers — hide axis entirely.
+        display: false,
+        grid: { display: false },
+        ticks: { display: false },
       }
     }
   };
 
+  // Color each bubble by its department for visual richness.
+  const fillColors = points.map((p) => withAlpha(colorForKey(p.dept), 0.6));
+  const borderColors = points.map((p) => colorForKey(p.dept));
   const data = {
     datasets: [
       {
         label: 'Faculty Reach',
         data: points,
-        backgroundColor: 'rgba(9, 124, 135, 0.65)',
-        hoverBackgroundColor: 'rgba(224, 122, 80, 0.95)',
-        borderColor: '#097C87',
-        borderWidth: 1
+        backgroundColor: fillColors,
+        hoverBackgroundColor: borderColors,
+        borderColor: borderColors,
+        borderWidth: 1,
       },
     ],
   };
@@ -121,9 +157,209 @@ export function BubbleChart({ points }: BubbleChartProps) {
   return (
     <div className={styles.chartCard}>
       <h3>Canonical Identity Reach Map</h3>
-      <div className={styles.sub}>Longitudinal individual tracking mapped against session engagement depth. Simulating phase 1 Jitter.</div>
-      <div className={styles.chartWrapper}>
+      <div className={styles.sub}>
+        One bubble per faculty member. Bubble size scales with sessions attended; color encodes department.
+      </div>
+      <div
+        className={styles.chartWrapper}
+        style={{ height: 'clamp(320px, 50vw, 460px)' }}
+      >
         <Bubble options={options as any} data={data} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ScatterChart — sessions × series matrix
+// One dot per faculty. X = sessions attended. Y = distinct series engaged.
+// Color encodes a categorical group (e.g. academic rank).
+// ─────────────────────────────────────────────────────────────────────────────
+export interface ScatterDataPoint {
+  x: number;
+  y: number;
+  name: string;
+  group: string;
+}
+
+interface ScatterChartProps {
+  points: ScatterDataPoint[];
+  title?: string;
+  sub?: string;
+  xLabel?: string;
+  yLabel?: string;
+  groupLabel?: string;
+}
+
+export function ScatterChart({
+  points,
+  title = 'Sessions × Series',
+  sub = 'Each dot is one faculty member. Top-right = high session count and broad series engagement.',
+  xLabel = 'Sessions attended',
+  yLabel = 'Distinct series engaged',
+  groupLabel = 'Group',
+}: ScatterChartProps) {
+  const groups = Array.from(new Set(points.map((p) => p.group)));
+  const datasets = groups.map((g) => {
+    const color = colorForKey(g);
+    return {
+      label: g,
+      data: points.filter((p) => p.group === g),
+      backgroundColor: withAlpha(color, 0.7),
+      borderColor: color,
+      borderWidth: 1,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+    };
+  });
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top' as const,
+        labels: {
+          boxWidth: 8,
+          boxHeight: 8,
+          padding: 6,
+          font: { size: 10, family: "'Segoe UI', Arial, sans-serif" },
+          color: '#5a8a8f',
+          usePointStyle: true,
+        },
+      },
+      title: { display: false },
+      tooltip: {
+        backgroundColor: '#fff',
+        titleColor: '#0d2e32',
+        bodyColor: '#0d2e32',
+        borderColor: '#d4eaec',
+        borderWidth: 1,
+        padding: 10,
+        cornerRadius: 6,
+        displayColors: false,
+        callbacks: {
+          label: function (ctx: any) {
+            const pt = ctx.raw as ScatterDataPoint;
+            return [
+              `${pt.name}`,
+              `${groupLabel}: ${pt.group}`,
+              `Sessions: ${pt.x}`,
+              `Series engaged: ${pt.y}`,
+            ];
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        title: { display: true, text: xLabel, font: { weight: 'bold' as const } },
+        grid: { color: '#eef5f6' },
+        ticks: { color: '#5a8a8f', precision: 0 },
+        beginAtZero: true,
+      },
+      y: {
+        title: { display: true, text: yLabel, font: { weight: 'bold' as const } },
+        grid: { color: '#eef5f6' },
+        ticks: { color: '#5a8a8f', precision: 0 },
+        beginAtZero: true,
+      },
+    },
+  };
+
+  return (
+    <div className={styles.chartCard}>
+      <h3>{title}</h3>
+      <div className={styles.sub}>{sub}</div>
+      <div
+        className={styles.chartWrapper}
+        style={{ height: 'clamp(320px, 48vw, 440px)' }}
+      >
+        <Scatter options={options as any} data={{ datasets }} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DoughnutChart — categorical breakdown (e.g. attendees by position type)
+// ─────────────────────────────────────────────────────────────────────────────
+export interface DoughnutChartProps {
+  labels: string[];
+  counts: number[];
+  title?: string;
+  sub?: string;
+}
+
+export function DoughnutChart({
+  labels,
+  counts,
+  title = 'Attendees by Position Type',
+  sub = 'Breakdown of unique participants by role classification.',
+}: DoughnutChartProps) {
+  const colors = labels.map((l) => colorForKey(l));
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        position: 'right' as const,
+        align: 'start' as const,
+        labels: {
+          boxWidth: 8,
+          boxHeight: 8,
+          padding: 6,
+          font: { size: 11, family: "'Segoe UI', Arial, sans-serif" },
+          color: '#5a8a8f',
+          usePointStyle: true,
+        },
+      },
+      title: { display: false },
+      tooltip: {
+        backgroundColor: '#fff',
+        titleColor: '#0d2e32',
+        bodyColor: '#0d2e32',
+        borderColor: '#d4eaec',
+        borderWidth: 1,
+        padding: 10,
+        cornerRadius: 6,
+        callbacks: {
+          label: function (ctx: any) {
+            const total = counts.reduce((a, b) => a + b, 0) || 1;
+            const v = ctx.parsed as number;
+            const pct = ((v / total) * 100).toFixed(1);
+            return ` ${ctx.label}: ${v} (${pct}%)`;
+          },
+        },
+      },
+    },
+    cutout: '55%',
+  };
+
+  const data = {
+    labels: labels.length ? labels : ['No Data'],
+    datasets: [
+      {
+        data: counts.length ? counts : [1],
+        backgroundColor: colors.length ? colors : ['#cccccc'],
+        borderColor: '#fff',
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  return (
+    <div className={styles.chartCard}>
+      <h3>{title}</h3>
+      <div className={styles.sub}>{sub}</div>
+      <div
+        className={styles.chartWrapper}
+        style={{ height: 'clamp(280px, 42vw, 380px)' }}
+      >
+        <Doughnut options={options as any} data={data} />
       </div>
     </div>
   );
