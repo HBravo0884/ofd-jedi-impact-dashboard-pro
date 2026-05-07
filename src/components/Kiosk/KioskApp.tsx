@@ -6,7 +6,7 @@ import styles from './Kiosk.module.css';
 
 type Screen = 'EVENT_PICK' | 'NAME' | 'SIGNATURE' | 'THANKS';
 interface KioskEvent { id: string; title: string; date: string; series: string | null; }
-interface AutoResult { id: string; name: string; dept: string; }
+interface AutoResult { id: string; name: string; dept: string; isClinician: boolean; signatureBaselineCount: number; }
 
 const SESSION_KEY = 'hucm_kiosk_active_event_v1';
 
@@ -19,6 +19,10 @@ export default function KioskApp() {
   const [autocomplete, setAutocomplete] = useState<AutoResult[]>([]);
   const [activeFacultyId, setActiveFacultyId] = useState<string | null>(null);
   const [activeFacultyDisplay, setActiveFacultyDisplay] = useState<string>('');
+  const [activeIsClinician, setActiveIsClinician] = useState<boolean>(false);
+  const [activeBaselineCount, setActiveBaselineCount] = useState<number>(0);
+  const [lastMlScore, setLastMlScore] = useState<number | null>(null);
+  const [lastMlAction, setLastMlAction] = useState<string | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -123,6 +127,8 @@ export default function KioskApp() {
   const pickFaculty = (r: AutoResult) => {
     setActiveFacultyId(r.id);
     setActiveFacultyDisplay(r.name);
+    setActiveIsClinician(r.isClinician);
+    setActiveBaselineCount(r.signatureBaselineCount);
     setSearchName(r.name);
     setAutocomplete([]);
     setScreen('SIGNATURE');
@@ -137,6 +143,8 @@ export default function KioskApp() {
     }
     setActiveFacultyId(null);
     setActiveFacultyDisplay(v);
+    setActiveIsClinician(false); // unknown — treat as optional until DB resolves
+    setActiveBaselineCount(0);
     setAutocomplete([]);
     setScreen('SIGNATURE');
   };
@@ -164,12 +172,18 @@ export default function KioskApp() {
       if (!res.ok || !data.ok) {
         throw new Error(data?.error || 'Server rejected the check-in.');
       }
+      setLastMlScore(typeof data.mlScore === 'number' ? data.mlScore : null);
+      setLastMlAction(typeof data.mlAction === 'string' ? data.mlAction : null);
       setScreen('THANKS');
       // Auto-reset back to NAME screen for the next attendee.
       setTimeout(() => {
         setSearchName('');
         setActiveFacultyDisplay('');
         setActiveFacultyId(null);
+        setActiveIsClinician(false);
+        setActiveBaselineCount(0);
+        setLastMlScore(null);
+        setLastMlAction(null);
         setAutocomplete([]);
         setScreen('NAME');
       }, 2400);
@@ -273,6 +287,20 @@ export default function KioskApp() {
             <p className={styles.lead}>
               Signing in: <strong style={{ color: '#097C87' }}>{activeFacultyDisplay}</strong>
             </p>
+            <div style={{ textAlign: 'center', marginBottom: 14, fontSize: '0.85rem', fontWeight: 600 }}>
+              {activeIsClinician ? (
+                <span style={{ color: '#b91c1c' }}>
+                  ✦ Signature required for CME audit (clinician credentials on file)
+                </span>
+              ) : (
+                <span style={{ color: '#5a8a8f' }}>Signature optional — feel free to skip if you'd like</span>
+              )}
+              {activeBaselineCount > 0 && (
+                <div style={{ color: '#5a8a8f', fontWeight: 500, marginTop: 4 }}>
+                  Biometric baseline: {activeBaselineCount} sample{activeBaselineCount === 1 ? '' : 's'} on file
+                </div>
+              )}
+            </div>
             <div className={styles.sigBox}>
               <canvas ref={canvasRef} className={styles.sigCanvas} />
               <div className={`${styles.sigHint} ${hasSignature ? styles.hidden : ''}`}>
@@ -299,7 +327,8 @@ export default function KioskApp() {
                 <button
                   className={`${styles.btn} ${styles.btnPrimary}`}
                   onClick={submit}
-                  disabled={submitting}
+                  disabled={submitting || (activeIsClinician && !hasSignature)}
+                  title={activeIsClinician && !hasSignature ? 'Clinicians are required to sign for CME audit.' : undefined}
                 >
                   {submitting ? 'Submitting…' : 'Submit registration'}
                 </button>
@@ -314,6 +343,14 @@ export default function KioskApp() {
             <div className={styles.thanksIcon}>✅</div>
             <div className={styles.thanksTitle}>Registered!</div>
             <div className={styles.thanksSub}>Thank you. Please pass the device to the next person.</div>
+            {lastMlAction && lastMlScore !== null && lastMlAction !== 'NO_SIGNATURE' && (
+              <div style={{ marginTop: 18, fontSize: '0.85rem', color: '#5a8a8f' }}>
+                {lastMlAction === 'BASELINE_ACQUIRED' && '📍 First signature on file — baseline acquired.'}
+                {lastMlAction === 'VERIFIED'           && `🔐 Biometric match · ${Math.round(lastMlScore)}% confidence`}
+                {lastMlAction === 'POSSIBLE_MATCH'     && `· ${Math.round(lastMlScore)}% biometric match`}
+                {lastMlAction === 'SUSPICIOUS_MISMATCH' && `⚠️ Signature differs from baseline (${Math.round(lastMlScore)}%) — flagged for review`}
+              </div>
+            )}
           </div>
         )}
 
