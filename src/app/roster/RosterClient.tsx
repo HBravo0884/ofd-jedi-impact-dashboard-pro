@@ -2,6 +2,13 @@
 
 import React, { useState } from 'react';
 
+function scoreTier(score: number): { bg: string; fg: string; label: string } {
+  if (score >= 10) return { bg: '#dcfce7', fg: '#166534', label: 'High' };
+  if (score >= 4)  return { bg: '#fef9c3', fg: '#854d0e', label: 'Mid'  };
+  if (score >= 1)  return { bg: '#fee2e2', fg: '#991b1b', label: 'Low'  };
+  return { bg: '#f1f5f9', fg: '#475569', label: '—' };
+}
+
 export default function RosterClient({ events }: { events: any[] }) {
   const [selectedEventId, setSelectedEventId] = useState(events.length > 0 ? events[0].id : '');
 
@@ -48,6 +55,17 @@ export default function RosterClient({ events }: { events: any[] }) {
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
              Export Session Roster
           </button>
+          {selectedEventId && (
+            <a 
+              href={`/admin/signin-sheet/${selectedEventId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#097c87', color: '#fff', textDecoration: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+              title="Open a printable sign-in sheet for this session — Cmd+P to save as PDF"
+            >
+              🖨️ Sign-in sheet (PDF)
+            </a>
+          )}
        </div>
 
        {activeEvent && activeEvent.attendees.length > 0 ? (
@@ -71,7 +89,13 @@ export default function RosterClient({ events }: { events: any[] }) {
                           <td style={{ padding: '12px 20px', color: '#475569' }}>{a.rank}</td>
                           <td style={{ padding: '12px 20px', color: '#475569' }}>{a.division}</td>
                           <td style={{ padding: '12px 20px', color: '#475569' }}>{a.department}</td>
-                          <td style={{ padding: '12px 20px', color: '#097c87', fontWeight: 800, textAlign: 'right', fontSize: '1rem' }}>{a.score}</td>
+                          <td style={{ padding: '12px 20px', textAlign: 'right' }}>
+                            {(() => { const t = scoreTier(Number(a.score) || 0); return (
+                              <span title={`${t.label} engagement`} style={{ display: 'inline-block', minWidth: 36, padding: '3px 10px', borderRadius: 999, background: t.bg, color: t.fg, fontWeight: 800, fontSize: '0.92rem' }}>
+                                {a.score}
+                              </span>
+                            ); })()}
+                          </td>
                        </tr>
                     ))}
                  </tbody>
