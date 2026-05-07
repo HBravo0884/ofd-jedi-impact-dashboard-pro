@@ -99,6 +99,11 @@ export default async function RootLayout({
                 </Link>
               )}
               {isAdmin && (
+                <Link href="/admin/audit" className="hdr-pill hdr-pill-darkteal">
+                  🧪 Verification Audit
+                </Link>
+              )}
+              {isAdmin && (
                 <Link href="/admin/settings" className="hdr-pill hdr-pill-orange">
                   ⚙️ Settings
                 </Link>

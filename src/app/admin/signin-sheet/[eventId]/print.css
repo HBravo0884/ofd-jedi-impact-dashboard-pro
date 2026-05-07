@@ -184,3 +184,16 @@
   .sheet-head { page-break-after: avoid; }
   .event-facts { page-break-after: avoid; }
 }
+
+
+/* Inline SVG signature inside the col-sig cell */
+.col-sig svg {
+  display: block;
+  width: 180px;
+  height: 48px;
+  border-bottom: 1px solid #cbd5e1;
+  color: #0a1f22;
+}
+@media print {
+  .col-sig svg { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
