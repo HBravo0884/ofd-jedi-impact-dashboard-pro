@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import './print.css';
+import { SignatureSVG, pickLatestTrace } from '@/components/SignatureSVG';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -143,7 +144,7 @@ export default async function SigninSheetPage({
                       <td className="col-mins">{a.durationJoined}</td>
                       <td className="col-sig">
                         {hasSignature ? (
-                          <span className="sig-mark">✎ on file</span>
+                          <SignatureSVG trace={pickLatestTrace(f.signatureUrls)} width={180} height={48} />
                         ) : (
                           <span className="sig-line">&nbsp;</span>
                         )}
