@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { priming as primeKioskSettings } from '@/lib/kioskSettings';
 import {
   extractPath,
   normalizePoints,
@@ -20,6 +21,7 @@ export const revalidate = 0;
 // Returns DTW biometric similarity if a signature baseline exists.
 export async function POST(req: Request) {
   try {
+    await primeKioskSettings();
     const body = await req.json();
     const { facultyId, name, eventId, signatureTrace } = body || {};
     const attempt    = Number.isFinite(Number(body?.attempt))     ? Math.max(1, Number(body.attempt))     : 1;

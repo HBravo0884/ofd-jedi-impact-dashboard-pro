@@ -408,9 +408,10 @@ export default function KioskApp() {
             {lastMlAction && lastMlScore !== null && lastMlAction !== 'NO_SIGNATURE' && (
               <div style={{ marginTop: 18, fontSize: '0.85rem', color: '#5a8a8f' }}>
                 {lastMlAction === 'BASELINE_ACQUIRED' && '📍 First signature on file — baseline acquired.'}
-                {lastMlAction === 'VERIFIED'           && `🔐 Biometric match · ${Math.round(lastMlScore)}% confidence`}
-                {lastMlAction === 'POSSIBLE_MATCH'     && `· ${Math.round(lastMlScore)}% biometric match`}
-                {lastMlAction === 'SUSPICIOUS_MISMATCH' && `⚠️ Signature differs from baseline (${Math.round(lastMlScore)}%) — flagged for review`}
+                {lastMlAction === 'VERIFIED'      && `🔐 Verified match · ${Math.round(lastMlScore)}% confidence`}
+                {lastMlAction === 'LIKELY_MATCH'  && `✓ Likely match · ${Math.round(lastMlScore)}% confidence`}
+                {lastMlAction === 'WEAK_MATCH'    && `⚠️ Weak match · ${Math.round(lastMlScore)}% — flagged for review`}
+                {lastMlAction === 'POOR_MATCH'    && `✕ Poor match · ${Math.round(lastMlScore)}% — flagged for review`}
               </div>
             )}
           </div>

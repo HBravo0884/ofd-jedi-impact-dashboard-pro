@@ -10,7 +10,7 @@ interface TestResult {
   facultyName: string;
   baselineCount: number;
   mlScore: number | null;
-  mlAction: 'VERIFIED' | 'POSSIBLE_MATCH' | 'SUSPICIOUS_MISMATCH' | 'NO_BASELINE';
+  mlAction: 'VERIFIED' | 'LIKELY_MATCH' | 'WEAK_MATCH' | 'POOR_MATCH' | 'NO_BASELINE';
   bestSampleIndex: number;
   bestDtw: number;
   perSample: Array<{
@@ -460,10 +460,11 @@ function TestResultPanel({ result }: { result: TestResult }) {
   const score = Math.round(result.mlScore || 0);
   const action = result.mlAction;
   const palette =
-    action === 'VERIFIED'             ? { bg: '#dcfce7', fg: '#166534', bar: '#16a34a', icon: '🔐', label: 'VERIFIED' } :
-    action === 'POSSIBLE_MATCH'       ? { bg: '#fef9c3', fg: '#854d0e', bar: '#ca8a04', icon: '·',  label: 'POSSIBLE MATCH' } :
-    action === 'SUSPICIOUS_MISMATCH'  ? { bg: '#fee2e2', fg: '#991b1b', bar: '#dc2626', icon: '⚠️', label: 'SUSPICIOUS MISMATCH' } :
-                                        { bg: '#f1f5f9', fg: '#334155', bar: '#64748b', icon: '·',  label: action };
+    action === 'VERIFIED'      ? { bg: '#dcfce7', fg: '#166534', bar: '#16a34a', icon: '🔐', label: 'VERIFIED MATCH' } :
+    action === 'LIKELY_MATCH'  ? { bg: '#ecfccb', fg: '#3f6212', bar: '#65a30d', icon: '✓',  label: 'LIKELY MATCH' } :
+    action === 'WEAK_MATCH'    ? { bg: '#fef9c3', fg: '#854d0e', bar: '#ca8a04', icon: '⚠️', label: 'WEAK MATCH — PLEASE VERIFY' } :
+    action === 'POOR_MATCH'    ? { bg: '#fee2e2', fg: '#991b1b', bar: '#dc2626', icon: '✕',  label: 'POOR MATCH — FLAGGED' } :
+                                 { bg: '#f1f5f9', fg: '#334155', bar: '#64748b', icon: '·',  label: action };
 
   return (
     <div style={{
@@ -486,11 +487,12 @@ function TestResultPanel({ result }: { result: TestResult }) {
       <div style={{ position: 'relative', height: 10, background: '#e2e8f0', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${score}%`, background: palette.bar, transition: 'width 0.4s ease' }} />
         {/* Threshold marks at 50% and 75% */}
-        <div style={{ position: 'absolute', left: '40%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
-        <div style={{ position: 'absolute', left: '65%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '35%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '55%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '75%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: palette.fg, opacity: 0.6, marginTop: 4 }}>
-        <span>0</span><span>40% (possible)</span><span>65% (verified)</span><span>100</span>
+        <span>0</span><span>35% weak</span><span>55% likely</span><span>75% verified</span><span>100</span>
       </div>
 
       {/* Per-sample breakdown — useful for live demo */}

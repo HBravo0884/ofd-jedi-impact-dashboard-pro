@@ -1,3 +1,5 @@
+import { readNumber } from '@/lib/kioskSettings';
+
 export interface Point {
   x: number;
   y: number;
@@ -121,29 +123,32 @@ export function dynamicTimeWarping(seq1: Point[], seq2: Point[]): number {
 //     Lower = stricter. Set to 0.5 if you want to make verification harder
 //     (clinical / high-security context). Set to 1.5 to be very lenient.
 export function calculateConfidence(dtwCost: number, numNodes: number = 50): number {
-  const perNode = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_DTW_MAX_PER_NODE) || '1.0'
-  );
-  const maxAcceptableDistortion = numNodes * (Number.isFinite(perNode) && perNode > 0 ? perNode : 1.0);
+  const perNode = readNumber('SIGNATURE_DTW_MAX_PER_NODE', 1.0);
+  const maxAcceptableDistortion = numNodes * (perNode > 0 ? perNode : 1.0);
   if (dtwCost >= maxAcceptableDistortion) return 0.0;
   const matchPercentage = 100 * (1 - (dtwCost / maxAcceptableDistortion));
   return Math.max(0.0, Number(matchPercentage.toFixed(1)));
 }
 
-// Bucket thresholds (also tunable via env). Used by both the kiosk check-in
-// and the trainer test endpoint so both surfaces show the same labels.
-//   SIGNATURE_VERIFIED_MIN  default 65
-//   SIGNATURE_POSSIBLE_MIN  default 40
-export function bucketForScore(score: number): 'VERIFIED' | 'POSSIBLE_MATCH' | 'SUSPICIOUS_MISMATCH' {
-  const verifiedMin = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_VERIFIED_MIN) || '65'
-  );
-  const possibleMin = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_POSSIBLE_MIN) || '40'
-  );
+// 4-tier bucket system so labels accurately reflect score quality.
+// Default thresholds:
+//   VERIFIED      ≥75   (strong match, defensible for CME audit)
+//   LIKELY_MATCH  55-74 (likely the same person, casual context)
+//   WEAK_MATCH    35-54 (poor match — flagged for review)
+//   POOR_MATCH    <35   (clear mismatch — flagged)
+//
+// All four are tunable via /admin/settings or env. Old name
+// SIGNATURE_POSSIBLE_MIN is read as a fallback for SIGNATURE_WEAK_MIN.
+export type ScoreBucket = 'VERIFIED' | 'LIKELY_MATCH' | 'WEAK_MATCH' | 'POOR_MATCH';
+
+export function bucketForScore(score: number): ScoreBucket {
+  const verifiedMin = readNumber('SIGNATURE_VERIFIED_MIN', 75);
+  const likelyMin   = readNumber('SIGNATURE_LIKELY_MIN', 55);
+  const weakMin     = readNumber('SIGNATURE_WEAK_MIN', readNumber('SIGNATURE_POSSIBLE_MIN', 35));
   if (score >= verifiedMin) return 'VERIFIED';
-  if (score >= possibleMin) return 'POSSIBLE_MATCH';
-  return 'SUSPICIOUS_MISMATCH';
+  if (score >= likelyMin)   return 'LIKELY_MATCH';
+  if (score >= weakMin)     return 'WEAK_MATCH';
+  return 'POOR_MATCH';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,10 +197,8 @@ function logScaleRatio(a: number, b: number): number {
 export function aspectRatioPenalty(ar1: number, ar2: number): number {
   const r = logScaleRatio(ar1, ar2);
   // Default "log-decay" coefficient is tunable via env.
-  const k = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_AR_PENALTY_K) || '0.30'
-  );
-  return Math.max(0, 1 - (Number.isFinite(k) ? k : 0.30) * Math.log2(r));
+  const k = readNumber('SIGNATURE_AR_PENALTY_K', 0.30);
+  return Math.max(0, 1 - k * Math.log2(r));
 }
 
 // Penalty for differing stroke counts. Same person tends to lift the pen the
@@ -203,22 +206,18 @@ export function aspectRatioPenalty(ar1: number, ar2: number): number {
 export function strokeCountPenalty(s1: number, s2: number): number {
   const diff = Math.abs(s1 - s2);
   // Tunable: how harshly to punish stroke-count mismatch.
-  const slope = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_STROKE_PENALTY_K) || '0.18'
-  );
+  const slope = readNumber('SIGNATURE_STROKE_PENALTY_K', 0.18);
   if (diff === 0) return 1.0;
   if (diff === 1) return 0.85;
   if (diff === 2) return 0.65;
-  return Math.max(0.3, 1 - diff * (Number.isFinite(slope) ? slope : 0.18));
+  return Math.max(0.3, 1 - diff * slope);
 }
 
 // Penalty for differing total ink lengths.
 export function pathLengthPenalty(l1: number, l2: number): number {
   const r = logScaleRatio(l1, l2);
-  const k = parseFloat(
-    (typeof process !== 'undefined' && process.env?.SIGNATURE_PATHLEN_PENALTY_K) || '0.25'
-  );
-  return Math.max(0.3, 1 - (Number.isFinite(k) ? k : 0.25) * Math.log2(r));
+  const k = readNumber('SIGNATURE_PATHLEN_PENALTY_K', 0.25);
+  return Math.max(0.3, 1 - k * Math.log2(r));
 }
 
 export interface CombinedScore {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { ADMIN_COOKIE_NAME, verifyAdmin } from '@/lib/adminAuth';
 import { prisma } from '@/lib/prisma';
+import { priming as primeKioskSettings } from '@/lib/kioskSettings';
 import {
   extractPath,
   normalizePoints,
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
   if (!(await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  await primeKioskSettings();
 
   let body: any = {};
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Bad JSON' }, { status: 400 }); }
