@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import SignaturePad from 'signature_pad';
 
+interface TestResult {
+  ok: boolean;
+  hasBaseline: boolean;
+  facultyName: string;
+  baselineCount: number;
+  mlScore: number | null;
+  mlAction: 'VERIFIED' | 'POSSIBLE_MATCH' | 'SUSPICIOUS_MISMATCH' | 'NO_BASELINE';
+  bestSampleIndex: number;
+  bestDtw: number;
+  perSample: Array<{ index: number; dtw: number; confidence: number }>;
+}
 interface FacultyRow {
   id: string;
   name: string;
@@ -25,6 +36,11 @@ export default function SignatureTrainerPage() {
   const [hasInk, setHasInk] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Mode toggle: TRAIN appends to baseline, TEST scores against existing baseline (read-only).
+  const [mode, setMode] = useState<'TRAIN' | 'TEST'>('TRAIN');
+  // Test-mode result state.
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigPad = useRef<SignaturePad | null>(null);
@@ -121,12 +137,14 @@ export default function SignatureTrainerPage() {
     setSuccessMessage('Baseline cleared.');
   };
 
-  const startTraining = (f: FacultyRow) => {
+  const startTraining = (f: FacultyRow, initialMode: 'TRAIN' | 'TEST' = 'TRAIN') => {
     setActive(f);
+    setMode(initialMode);
     setSamplesCaptured(0);
     setErrorMessage(null);
     setSuccessMessage(null);
     setHasInk(false);
+    setTestResult(null);
   };
   const finishTraining = () => {
     setActive(null);
@@ -134,7 +152,41 @@ export default function SignatureTrainerPage() {
     setHasInk(false);
     setErrorMessage(null);
     setSuccessMessage(null);
+    setTestResult(null);
+    setMode('TRAIN');
     reload(searchQ);
+  };
+
+  // ── TEST MODE: score the current canvas against the baseline (read-only) ──
+  const scoreSignature = async () => {
+    if (!active || !sigPad.current || sigPad.current.isEmpty()) {
+      setErrorMessage('Sign the canvas first.');
+      return;
+    }
+    setSubmitting(true);
+    setErrorMessage(null);
+    setTestResult(null);
+    try {
+      const trace = sigPad.current.toData();
+      const r = await fetch('/api/admin/signature-trainer/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facultyId: active.id, signatureTrace: trace }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      setTestResult(j as TestResult);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Scoring failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const tryAgain = () => {
+    sigPad.current?.clear();
+    setHasInk(false);
+    setTestResult(null);
+    setErrorMessage(null);
   };
 
   return (
@@ -203,12 +255,23 @@ export default function SignatureTrainerPage() {
                         {f.baselineCount > 0 ? `${f.baselineCount} sample${f.baselineCount === 1 ? '' : 's'}` : 'None'}
                       </td>
                       <td style={{ ...td, textAlign: 'right' }}>
-                        <button
-                          onClick={() => startTraining(f)}
-                          style={{ background: 'var(--c1)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: 6, fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          {f.baselineCount > 0 ? 'Add samples' : 'Train'}
-                        </button>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => startTraining(f, 'TRAIN')}
+                            style={{ background: 'var(--c1)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            {f.baselineCount > 0 ? 'Add samples' : 'Train'}
+                          </button>
+                          {f.baselineCount > 0 && (
+                            <button
+                              onClick={() => startTraining(f, 'TEST')}
+                              style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                              title="Test a signature against this baseline (read-only, for demo)"
+                            >
+                              Test
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -239,7 +302,26 @@ export default function SignatureTrainerPage() {
             </button>
           </div>
 
-          {/* Progress dots */}
+          {/* Mode toggle (TRAIN / TEST) */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, padding: 4, background: '#f1f5f9', borderRadius: 8, width: 'fit-content' }}>
+            <button
+              onClick={() => { setMode('TRAIN'); setTestResult(null); sigPad.current?.clear(); setHasInk(false); }}
+              style={modeBtn(mode === 'TRAIN', 'var(--c1)')}
+            >
+              Train baseline
+            </button>
+            <button
+              onClick={() => { if (active!.baselineCount === 0) { setErrorMessage('Train at least one signature before testing.'); return; } setMode('TEST'); setTestResult(null); sigPad.current?.clear(); setHasInk(false); setSamplesCaptured(0); }}
+              style={modeBtn(mode === 'TEST', '#8b5cf6')}
+              disabled={active!.baselineCount === 0}
+              title={active!.baselineCount === 0 ? 'Need at least 1 baseline sample to test against' : undefined}
+            >
+              Test against baseline
+            </button>
+          </div>
+
+          {/* Progress dots — only relevant in TRAIN mode */}
+          {mode === 'TRAIN' && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
             {Array.from({ length: TARGET_SAMPLES }).map((_, i) => (
               <span
@@ -257,6 +339,7 @@ export default function SignatureTrainerPage() {
               {samplesCaptured} / {TARGET_SAMPLES} captured this session · {active.baselineCount} total in baseline
             </span>
           </div>
+          )}
 
           {/* Signature pad */}
           <div style={{ width: '100%', border: '3px dashed #cbd5e1', borderRadius: 12, background: '#fff', position: 'relative', overflow: 'hidden' }}>
@@ -282,16 +365,21 @@ export default function SignatureTrainerPage() {
             </div>
           )}
 
+          {/* Test-mode result panel (only shows after scoreSignature returns) */}
+          {mode === 'TEST' && testResult && (
+            <TestResultPanel result={testResult} />
+          )}
+
           <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={() => { sigPad.current?.clear(); setHasInk(false); }}
+                onClick={() => { sigPad.current?.clear(); setHasInk(false); setTestResult(null); }}
                 disabled={submitting}
                 style={btn('var(--bg)', 'var(--muted)')}
               >
                 Clear pad
               </button>
-              {active.baselineCount > 0 && (
+              {mode === 'TRAIN' && active.baselineCount > 0 && (
                 <button
                   onClick={clearBaseline}
                   disabled={submitting}
@@ -309,13 +397,31 @@ export default function SignatureTrainerPage() {
               >
                 Done
               </button>
-              <button
-                onClick={submitSample}
-                disabled={submitting || !hasInk}
-                style={btn('var(--c1)', 'white', 'var(--c1)')}
-              >
-                {submitting ? 'Saving…' : `Save sample ${samplesCaptured + 1} of ${TARGET_SAMPLES}`}
-              </button>
+              {mode === 'TRAIN' ? (
+                <button
+                  onClick={submitSample}
+                  disabled={submitting || !hasInk}
+                  style={btn('var(--c1)', 'white', 'var(--c1)')}
+                >
+                  {submitting ? 'Saving…' : `Save sample ${samplesCaptured + 1} of ${TARGET_SAMPLES}`}
+                </button>
+              ) : testResult ? (
+                <button
+                  onClick={tryAgain}
+                  disabled={submitting}
+                  style={btn('#8b5cf6', 'white', '#8b5cf6')}
+                >
+                  Try again
+                </button>
+              ) : (
+                <button
+                  onClick={scoreSignature}
+                  disabled={submitting || !hasInk}
+                  style={btn('#8b5cf6', 'white', '#8b5cf6')}
+                >
+                  {submitting ? 'Scoring…' : 'Score signature'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -334,4 +440,99 @@ function btn(bg: string, fg: string, border = 'transparent'): React.CSSPropertie
   };
 }
 const th: React.CSSProperties = { padding: '10px 14px', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.4px' };
+
+
+// ── Test-result panel (reusable inside the active session) ────────────────
+function TestResultPanel({ result }: { result: TestResult }) {
+  if (!result.hasBaseline) {
+    return (
+      <div style={{
+        marginTop: 16, padding: 16, background: '#fff7ed', border: '1px solid #fed7aa',
+        color: '#9a3412', borderRadius: 10, fontSize: '0.92rem',
+      }}>
+        No baseline samples on file. Switch to <strong>Train baseline</strong> first.
+      </div>
+    );
+  }
+  const score = Math.round(result.mlScore || 0);
+  const action = result.mlAction;
+  const palette =
+    action === 'VERIFIED'             ? { bg: '#dcfce7', fg: '#166534', bar: '#16a34a', icon: '🔐', label: 'VERIFIED' } :
+    action === 'POSSIBLE_MATCH'       ? { bg: '#fef9c3', fg: '#854d0e', bar: '#ca8a04', icon: '·',  label: 'POSSIBLE MATCH' } :
+    action === 'SUSPICIOUS_MISMATCH'  ? { bg: '#fee2e2', fg: '#991b1b', bar: '#dc2626', icon: '⚠️', label: 'SUSPICIOUS MISMATCH' } :
+                                        { bg: '#f1f5f9', fg: '#334155', bar: '#64748b', icon: '·',  label: action };
+
+  return (
+    <div style={{
+      marginTop: 18, padding: 18, background: palette.bg, border: `1px solid ${palette.bar}55`,
+      borderRadius: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '2.4rem', fontWeight: 900, color: palette.fg, letterSpacing: '-0.02em' }}>
+          {score}%
+        </div>
+        <div style={{ fontSize: '0.95rem', color: palette.fg, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+          {palette.icon} {palette.label}
+        </div>
+        <div style={{ marginLeft: 'auto', fontSize: '0.78rem', color: palette.fg, opacity: 0.75 }}>
+          best of {result.baselineCount} baseline sample{result.baselineCount === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      {/* Confidence gauge */}
+      <div style={{ position: 'relative', height: 10, background: '#e2e8f0', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${score}%`, background: palette.bar, transition: 'width 0.4s ease' }} />
+        {/* Threshold marks at 50% and 75% */}
+        <div style={{ position: 'absolute', left: '50%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '75%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: palette.fg, opacity: 0.6, marginTop: 4 }}>
+        <span>0</span><span>50% (possible)</span><span>75% (verified)</span><span>100</span>
+      </div>
+
+      {/* Per-sample breakdown — useful for live demo */}
+      <details style={{ marginTop: 14 }}>
+        <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: palette.fg, fontWeight: 600 }}>
+          Per-sample breakdown ({result.perSample.length})
+        </summary>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: '0.85rem', background: 'rgba(255,255,255,0.5)', borderRadius: 8, overflow: 'hidden' }}>
+          <thead>
+            <tr style={{ background: 'rgba(0,0,0,0.06)' }}>
+              <th style={{ padding: '6px 10px', textAlign: 'left' }}>Sample #</th>
+              <th style={{ padding: '6px 10px', textAlign: 'right' }}>DTW distance</th>
+              <th style={{ padding: '6px 10px', textAlign: 'right' }}>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.perSample.map((row) => (
+              <tr key={row.index} style={{ borderTop: '1px solid rgba(0,0,0,0.05)', fontWeight: row.index === result.bestSampleIndex ? 700 : 400 }}>
+                <td style={{ padding: '6px 10px' }}>
+                  Sample #{row.index + 1}
+                  {row.index === result.bestSampleIndex && <span style={{ marginLeft: 6, padding: '1px 8px', background: palette.bar, color: 'white', borderRadius: 999, fontSize: '0.7rem' }}>best</span>}
+                </td>
+                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{row.dtw.toFixed(3)}</td>
+                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(row.confidence)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </div>
+  );
+}
+
+function modeBtn(active: boolean, accent: string): React.CSSProperties {
+  return {
+    padding: '8px 14px',
+    borderRadius: 6,
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    border: 'none',
+    background: active ? accent : 'transparent',
+    color: active ? 'white' : '#475569',
+    transition: '0.15s',
+  };
+}
 const td: React.CSSProperties = { padding: '10px 14px', fontSize: '0.9rem' };
