@@ -130,16 +130,25 @@ export function calculateConfidence(dtwCost: number, numNodes: number = 50): num
   return Math.max(0.0, Number(matchPercentage.toFixed(1)));
 }
 
-// Bucket thresholds (also tunable via env). Used by both the kiosk check-in
-// and the trainer test endpoint so both surfaces show the same labels.
-//   SIGNATURE_VERIFIED_MIN  default 65
-//   SIGNATURE_POSSIBLE_MIN  default 40
-export function bucketForScore(score: number): 'VERIFIED' | 'POSSIBLE_MATCH' | 'SUSPICIOUS_MISMATCH' {
-  const verifiedMin = readNumber('SIGNATURE_VERIFIED_MIN', 65);
-  const possibleMin = readNumber('SIGNATURE_POSSIBLE_MIN', 40);
+// 4-tier bucket system so labels accurately reflect score quality.
+// Default thresholds:
+//   VERIFIED      ≥75   (strong match, defensible for CME audit)
+//   LIKELY_MATCH  55-74 (likely the same person, casual context)
+//   WEAK_MATCH    35-54 (poor match — flagged for review)
+//   POOR_MATCH    <35   (clear mismatch — flagged)
+//
+// All four are tunable via /admin/settings or env. Old name
+// SIGNATURE_POSSIBLE_MIN is read as a fallback for SIGNATURE_WEAK_MIN.
+export type ScoreBucket = 'VERIFIED' | 'LIKELY_MATCH' | 'WEAK_MATCH' | 'POOR_MATCH';
+
+export function bucketForScore(score: number): ScoreBucket {
+  const verifiedMin = readNumber('SIGNATURE_VERIFIED_MIN', 75);
+  const likelyMin   = readNumber('SIGNATURE_LIKELY_MIN', 55);
+  const weakMin     = readNumber('SIGNATURE_WEAK_MIN', readNumber('SIGNATURE_POSSIBLE_MIN', 35));
   if (score >= verifiedMin) return 'VERIFIED';
-  if (score >= possibleMin) return 'POSSIBLE_MATCH';
-  return 'SUSPICIOUS_MISMATCH';
+  if (score >= likelyMin)   return 'LIKELY_MATCH';
+  if (score >= weakMin)     return 'WEAK_MATCH';
+  return 'POOR_MATCH';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

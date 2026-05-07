@@ -7,6 +7,9 @@ import { prisma } from '@/lib/prisma';
 export type KioskConfig = {
   // Bucket cutoffs (in confidence-percent space)
   SIGNATURE_VERIFIED_MIN?: number;
+  SIGNATURE_LIKELY_MIN?: number;
+  SIGNATURE_WEAK_MIN?: number;
+  // legacy alias kept for backward compatibility with existing rows
   SIGNATURE_POSSIBLE_MIN?: number;
   SIGNATURE_RETRY_MIN?: number;
 

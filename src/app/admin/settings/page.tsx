@@ -5,7 +5,8 @@ import Link from 'next/link';
 
 interface Config {
   SIGNATURE_VERIFIED_MIN?: number;
-  SIGNATURE_POSSIBLE_MIN?: number;
+  SIGNATURE_LIKELY_MIN?: number;
+  SIGNATURE_WEAK_MIN?: number;
   SIGNATURE_RETRY_MIN?: number;
   SIGNATURE_DTW_MAX_PER_NODE?: number;
   SIGNATURE_AR_PENALTY_K?: number;
@@ -14,9 +15,10 @@ interface Config {
 }
 
 const DEFAULTS: Required<Config> = {
-  SIGNATURE_VERIFIED_MIN: 65,
-  SIGNATURE_POSSIBLE_MIN: 40,
-  SIGNATURE_RETRY_MIN: 40,
+  SIGNATURE_VERIFIED_MIN: 75,
+  SIGNATURE_LIKELY_MIN:   55,
+  SIGNATURE_WEAK_MIN:     35,
+  SIGNATURE_RETRY_MIN:    35,
   SIGNATURE_DTW_MAX_PER_NODE: 1.0,
   SIGNATURE_AR_PENALTY_K: 0.30,
   SIGNATURE_STROKE_PENALTY_K: 0.18,
@@ -26,32 +28,20 @@ const DEFAULTS: Required<Config> = {
 // Strictness presets — each maps to a sensible bundle of values.
 const PRESETS = {
   Lenient: {
-    SIGNATURE_VERIFIED_MIN: 55,
-    SIGNATURE_POSSIBLE_MIN: 30,
-    SIGNATURE_RETRY_MIN: 30,
+    SIGNATURE_VERIFIED_MIN: 65, SIGNATURE_LIKELY_MIN: 45, SIGNATURE_WEAK_MIN: 25, SIGNATURE_RETRY_MIN: 25,
     SIGNATURE_DTW_MAX_PER_NODE: 1.4,
-    SIGNATURE_AR_PENALTY_K: 0.20,
-    SIGNATURE_STROKE_PENALTY_K: 0.12,
-    SIGNATURE_PATHLEN_PENALTY_K: 0.18,
+    SIGNATURE_AR_PENALTY_K: 0.20, SIGNATURE_STROKE_PENALTY_K: 0.12, SIGNATURE_PATHLEN_PENALTY_K: 0.18,
   },
   Normal: { ...DEFAULTS },
   Strict: {
-    SIGNATURE_VERIFIED_MIN: 75,
-    SIGNATURE_POSSIBLE_MIN: 50,
-    SIGNATURE_RETRY_MIN: 50,
+    SIGNATURE_VERIFIED_MIN: 80, SIGNATURE_LIKELY_MIN: 65, SIGNATURE_WEAK_MIN: 45, SIGNATURE_RETRY_MIN: 45,
     SIGNATURE_DTW_MAX_PER_NODE: 0.7,
-    SIGNATURE_AR_PENALTY_K: 0.40,
-    SIGNATURE_STROKE_PENALTY_K: 0.25,
-    SIGNATURE_PATHLEN_PENALTY_K: 0.35,
+    SIGNATURE_AR_PENALTY_K: 0.40, SIGNATURE_STROKE_PENALTY_K: 0.25, SIGNATURE_PATHLEN_PENALTY_K: 0.35,
   },
   ClinicalAudit: {
-    SIGNATURE_VERIFIED_MIN: 80,
-    SIGNATURE_POSSIBLE_MIN: 60,
-    SIGNATURE_RETRY_MIN: 60,
+    SIGNATURE_VERIFIED_MIN: 85, SIGNATURE_LIKELY_MIN: 70, SIGNATURE_WEAK_MIN: 55, SIGNATURE_RETRY_MIN: 55,
     SIGNATURE_DTW_MAX_PER_NODE: 0.55,
-    SIGNATURE_AR_PENALTY_K: 0.50,
-    SIGNATURE_STROKE_PENALTY_K: 0.30,
-    SIGNATURE_PATHLEN_PENALTY_K: 0.40,
+    SIGNATURE_AR_PENALTY_K: 0.50, SIGNATURE_STROKE_PENALTY_K: 0.30, SIGNATURE_PATHLEN_PENALTY_K: 0.40,
   },
 } as const;
 
@@ -166,24 +156,62 @@ export default function SettingsPage() {
           {/* CURRENT FEEL — plain English */}
           <section style={card}>
             <h2 style={h2}>What this means in plain English</h2>
-            <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.92rem', lineHeight: 1.6 }}>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.92rem', lineHeight: 1.7 }}>
               <li>
                 <strong>{cfg.SIGNATURE_VERIFIED_MIN}% or higher</strong> →{' '}
-                <span style={chip('#dcfce7','#166534')}>VERIFIED ✓</span> · counted as a confident match.
+                <span style={chip('#dcfce7','#166534')}>🔐 VERIFIED MATCH</span> · counted as a confident match.
               </li>
               <li>
-                <strong>{cfg.SIGNATURE_POSSIBLE_MIN}% – {cfg.SIGNATURE_VERIFIED_MIN - 1}%</strong> →{' '}
-                <span style={chip('#fef9c3','#854d0e')}>POSSIBLE</span> · accepted but flagged.
+                <strong>{cfg.SIGNATURE_LIKELY_MIN}% – {cfg.SIGNATURE_VERIFIED_MIN - 1}%</strong> →{' '}
+                <span style={chip('#ecfccb','#3f6212')}>✓ LIKELY MATCH</span> · accepted, casual confidence.
               </li>
               <li>
-                <strong>Below {cfg.SIGNATURE_POSSIBLE_MIN}%</strong> →{' '}
-                <span style={chip('#fee2e2','#991b1b')}>SUSPICIOUS</span> · still recorded for audit.
+                <strong>{cfg.SIGNATURE_WEAK_MIN}% – {cfg.SIGNATURE_LIKELY_MIN - 1}%</strong> →{' '}
+                <span style={chip('#fef9c3','#854d0e')}>⚠️ WEAK MATCH</span> · accepted but flagged for review.
+              </li>
+              <li>
+                <strong>Below {cfg.SIGNATURE_WEAK_MIN}%</strong> →{' '}
+                <span style={chip('#fee2e2','#991b1b')}>✕ POOR MATCH</span> · recorded but flagged.
               </li>
               <li>
                 <strong>Below {cfg.SIGNATURE_RETRY_MIN}%</strong> on the kiosk → ask the user to{' '}
                 <strong>try again</strong> (up to 3 attempts).
               </li>
             </ul>
+          </section>
+
+          {/* GOLD STANDARD HELP */}
+          <section style={card}>
+            <h2 style={h2}>How to read these scores</h2>
+            <p style={{ fontSize: '0.92rem', lineHeight: 1.6, color: 'var(--text)', margin: '0 0 10px' }}>
+              The system uses Dynamic Time Warping (DTW) on resampled, normalized
+              signature paths combined with three structural penalties (aspect
+              ratio, stroke count, total ink length). Final score is a 0–100
+              confidence percentage.
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: 8 }}>
+              <thead>
+                <tr style={{ background: 'var(--bg)' }}>
+                  <th style={helpTh}>Domain</th>
+                  <th style={helpTh}>Typical EER</th>
+                  <th style={helpTh}>What "verified" means</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style={helpTd}>Casual web sign-in (this system)</td><td style={helpTd}>10–20%</td><td style={helpTd}>Plausibly the same person</td></tr>
+                <tr><td style={helpTd}>Commercial offline signature verification</td><td style={helpTd}>5–15%</td><td style={helpTd}>Library-grade DTW + neural features</td></tr>
+                <tr><td style={helpTd}>Banking / e-signatures</td><td style={helpTd}>2–5%</td><td style={helpTd}>Velocity + pressure + dynamic features</td></tr>
+                <tr><td style={helpTd}>Forensic document examination</td><td style={helpTd}>&lt;1%</td><td style={helpTd}>Human expert + chemistry/ink analysis</td></tr>
+              </tbody>
+            </table>
+            <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: 12, lineHeight: 1.5 }}>
+              For CME compliance the goal is "demonstrably present and
+              biometrically attested" — not professional forgery detection.
+              A <strong>VERIFIED</strong> threshold of <strong>75%</strong> with our DTW + structural-penalty
+              system is comparable to mid-tier commercial systems. ≥85% is
+              roughly bank-grade for casual use. Pick a threshold based on
+              what your audit committee will defend.
+            </p>
           </section>
 
           {/* ADVANCED SLIDERS */}
@@ -198,14 +226,19 @@ export default function SettingsPage() {
               <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
                 <Slider label="VERIFIED threshold (%)"
                         helper="Score at or above this is a confident match."
-                        min={30} max={95} step={1}
+                        min={50} max={95} step={1}
                         value={cfg.SIGNATURE_VERIFIED_MIN}
                         onChange={(v) => setVal('SIGNATURE_VERIFIED_MIN', v)} />
-                <Slider label="POSSIBLE threshold (%)"
-                        helper="Score at or above this is accepted but flagged."
-                        min={20} max={cfg.SIGNATURE_VERIFIED_MIN - 1} step={1}
-                        value={cfg.SIGNATURE_POSSIBLE_MIN}
-                        onChange={(v) => setVal('SIGNATURE_POSSIBLE_MIN', v)} />
+                <Slider label="LIKELY threshold (%)"
+                        helper="Score at or above this is accepted as a casual-confidence match."
+                        min={30} max={cfg.SIGNATURE_VERIFIED_MIN - 1} step={1}
+                        value={cfg.SIGNATURE_LIKELY_MIN}
+                        onChange={(v) => setVal('SIGNATURE_LIKELY_MIN', v)} />
+                <Slider label="WEAK threshold (%)"
+                        helper="Score at or above this is accepted but flagged for review."
+                        min={15} max={cfg.SIGNATURE_LIKELY_MIN - 1} step={1}
+                        value={cfg.SIGNATURE_WEAK_MIN}
+                        onChange={(v) => setVal('SIGNATURE_WEAK_MIN', v)} />
                 <Slider label="RETRY threshold (%)"
                         helper="Below this, the kiosk asks the user to try again."
                         min={10} max={cfg.SIGNATURE_VERIFIED_MIN} step={1}
@@ -291,6 +324,8 @@ function PresetCard({ name, desc, onClick, highlight }: { name: string; desc: st
   );
 }
 
+const helpTh: React.CSSProperties = { padding: '8px 10px', textAlign: 'left', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.4px', color: 'var(--c1d)', borderBottom: '1px solid var(--border)' };
+const helpTd: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--border)' };
 function chip(bg: string, fg: string): React.CSSProperties {
   return { display: 'inline-block', padding: '1px 8px', background: bg, color: fg, borderRadius: 999, fontSize: '0.78rem', fontWeight: 700 };
 }

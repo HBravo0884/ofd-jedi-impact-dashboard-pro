@@ -7,6 +7,9 @@ export const revalidate = 0;
 
 const NUMERIC_KEYS = [
   'SIGNATURE_VERIFIED_MIN',
+  'SIGNATURE_LIKELY_MIN',
+  'SIGNATURE_WEAK_MIN',
+  // legacy alias kept so old payloads still work
   'SIGNATURE_POSSIBLE_MIN',
   'SIGNATURE_RETRY_MIN',
   'SIGNATURE_DTW_MAX_PER_NODE',
@@ -59,6 +62,8 @@ export async function DELETE() {
   }
   await setKioskConfig({
     SIGNATURE_VERIFIED_MIN: null as any,
+    SIGNATURE_LIKELY_MIN: null as any,
+    SIGNATURE_WEAK_MIN: null as any,
     SIGNATURE_POSSIBLE_MIN: null as any,
     SIGNATURE_RETRY_MIN: null as any,
     SIGNATURE_DTW_MAX_PER_NODE: null as any,
