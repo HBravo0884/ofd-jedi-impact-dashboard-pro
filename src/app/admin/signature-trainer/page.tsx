@@ -483,11 +483,11 @@ function TestResultPanel({ result }: { result: TestResult }) {
       <div style={{ position: 'relative', height: 10, background: '#e2e8f0', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${score}%`, background: palette.bar, transition: 'width 0.4s ease' }} />
         {/* Threshold marks at 50% and 75% */}
-        <div style={{ position: 'absolute', left: '50%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
-        <div style={{ position: 'absolute', left: '75%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '40%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
+        <div style={{ position: 'absolute', left: '65%', top: -2, height: 14, width: 1, background: 'rgba(0,0,0,0.3)' }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: palette.fg, opacity: 0.6, marginTop: 4 }}>
-        <span>0</span><span>50% (possible)</span><span>75% (verified)</span><span>100</span>
+        <span>0</span><span>40% (possible)</span><span>65% (verified)</span><span>100</span>
       </div>
 
       {/* Per-sample breakdown — useful for live demo */}

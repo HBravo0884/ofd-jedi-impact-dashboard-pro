@@ -8,6 +8,7 @@ import {
   resamplePoints,
   dynamicTimeWarping,
   calculateConfidence,
+  bucketForScore,
 } from '@/lib/signatureML';
 
 export const revalidate = 0;
@@ -74,10 +75,7 @@ export async function POST(req: Request) {
   }
 
   const mlScore = bestIdx >= 0 ? calculateConfidence(bestDtw, 50) : 0;
-  const mlAction =
-    mlScore >= 75 ? 'VERIFIED'
-    : mlScore >= 50 ? 'POSSIBLE_MATCH'
-    : 'SUSPICIOUS_MISMATCH';
+  const mlAction = bucketForScore(mlScore);
 
   return NextResponse.json({
     ok: true,

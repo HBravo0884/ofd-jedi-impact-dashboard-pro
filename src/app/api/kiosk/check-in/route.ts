@@ -6,6 +6,7 @@ import {
   resamplePoints,
   dynamicTimeWarping,
   calculateConfidence,
+  bucketForScore,
 } from '@/lib/signatureML';
 import { isClinicianDegrees } from '@/lib/clinician';
 
@@ -153,9 +154,7 @@ export async function POST(req: Request) {
       mlAction:
         !hasSignature ? 'NO_SIGNATURE'
         : mlScore === -1 ? 'BASELINE_ACQUIRED'
-        : mlScore >= 75 ? 'VERIFIED'
-        : mlScore >= 50 ? 'POSSIBLE_MATCH'
-        : 'SUSPICIOUS_MISMATCH',
+        : bucketForScore(mlScore),
     });
   } catch (err: any) {
     console.error('Kiosk check-in failure:', err);
