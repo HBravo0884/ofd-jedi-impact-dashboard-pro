@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { priming as primeKioskSettings } from '@/lib/kioskSettings';
+import { serializeTrace } from '@/lib/serializeTrace';
 import {
   extractPath,
   normalizePoints,
@@ -191,7 +192,7 @@ export async function POST(req: Request) {
       try {
         await prisma.faculty.update({
           where: { id: faculty.id },
-          data: { signatureUrls: { push: JSON.stringify(signatureTrace).slice(0, 5000) } },
+          data: { signatureUrls: { push: serializeTrace(signatureTrace) } },
         });
       } catch (e) {
         console.warn('signature persist failed (non-fatal):', e);
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
         await prisma.$executeRawUnsafe(
           `UPDATE "Attendance" SET "signatureTrace" = $1::jsonb
             WHERE "facultyId" = $2 AND "eventId" = $3`,
-          JSON.stringify(signatureTrace),
+          serializeTrace(signatureTrace),
           faculty.id,
           event.id
         );

@@ -24,6 +24,16 @@ export default function IngestionPortal() {
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [seriesOptions, setSeriesOptions] = useState<SeriesOption[]>([]);
+  // Confirmation modal state — shown after the user clicks Send so they
+  // can verify what's about to be written before commit.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Last successful submission payload — kept on screen until user dismisses,
+  // so they always have visible proof the data was processed.
+  const [lastReceipt, setLastReceipt] = useState<null | {
+    eventTitle: string; date: string; recordsWritten: number;
+    matchedExisting: number; createdNew: number; recordsSkipped: number;
+    seriesTitle: string;
+  }>(null);
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState('');
@@ -105,11 +115,11 @@ export default function IngestionPortal() {
   };
 
   // ── Submit to /api/ingest ──────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  // Pre-flight validation, then open the confirm modal.
+  const handleSubmit = () => {
     setErrorMessage(null);
-    setResultMessage(null);
     if (!eventTitle || !eventDate) {
-      setErrorMessage('Event Title and Date are required before commit.');
+      setErrorMessage('Event Title and Date are required before sending.');
       return;
     }
     if (csvData.length < 5) {
@@ -118,7 +128,14 @@ export default function IngestionPortal() {
       );
       return;
     }
+    setConfirmOpen(true);
+  };
 
+  // Actually fire the request. Called from the confirmation modal.
+  const handleConfirmedSubmit = async () => {
+    setConfirmOpen(false);
+    setErrorMessage(null);
+    setResultMessage(null);
     setIsUploading(true);
     try {
       const res = await fetch('/api/ingest', {
@@ -136,8 +153,18 @@ export default function IngestionPortal() {
       if (!res.ok) {
         throw new Error(data?.error || `HTTP ${res.status}`);
       }
+      const seriesTitle = seriesOptions.find((s) => s.id === selectedSeriesId)?.title || 'Standalone';
+      setLastReceipt({
+        eventTitle,
+        date: eventDate,
+        seriesTitle,
+        recordsWritten: data.recordsWritten ?? 0,
+        matchedExisting: data.matchedExisting ?? 0,
+        createdNew: data.createdNew ?? 0,
+        recordsSkipped: data.recordsSkipped ?? 0,
+      });
       setResultMessage(
-        `✅ Wrote ${data.recordsWritten} attendance records (${data.matchedExisting} matched existing faculty, ${data.createdNew} new). Skipped ${data.recordsSkipped}.`
+        `Wrote ${data.recordsWritten} attendance records · ${data.matchedExisting} matched existing faculty · ${data.createdNew} new · skipped ${data.recordsSkipped}.`
       );
       setCsvData([]);
       setCsvName('');
@@ -364,7 +391,7 @@ export default function IngestionPortal() {
                 disabled={isUploading}
                 style={{ ...btnStyle, background: isUploading ? '#999' : 'var(--c3d)', color: 'white' }}
               >
-                {isUploading ? 'Locked…' : 'Commit to database'}
+                {isUploading ? 'Sending…' : '📤 Send to database'}
               </button>
             </div>
           </>
@@ -382,7 +409,78 @@ export default function IngestionPortal() {
               borderRadius: 8,
             }}
           >
-            {resultMessage}
+            ✅ {resultMessage}
+          </div>
+        )}
+
+        {/* Persistent receipt card — survives until user dismisses. */}
+        {lastReceipt && (
+          <div style={{
+            marginTop: 16,
+            padding: 18,
+            background: '#f0fdf4',
+            border: '1px solid #86efac',
+            borderRadius: 10,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+              <h3 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.4px', color: '#166534' }}>
+                ✅ Submission confirmed — receipt
+              </h3>
+              <button onClick={() => setLastReceipt(null)}
+                      style={{ background: 'transparent', border: 'none', color: '#166534', cursor: 'pointer', fontWeight: 700 }}>
+                Dismiss
+              </button>
+            </div>
+            <table style={{ width: '100%', fontSize: '0.92rem', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Event title</td><td style={{ padding: '4px 8px', fontWeight: 600 }}>{lastReceipt.eventTitle}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Series</td><td style={{ padding: '4px 8px' }}>{lastReceipt.seriesTitle}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Date</td><td style={{ padding: '4px 8px' }}>{lastReceipt.date}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Attendances written</td><td style={{ padding: '4px 8px', fontWeight: 700, color: '#166534' }}>{lastReceipt.recordsWritten}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Matched existing faculty</td><td style={{ padding: '4px 8px' }}>{lastReceipt.matchedExisting}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>New faculty created</td><td style={{ padding: '4px 8px' }}>{lastReceipt.createdNew}</td></tr>
+                <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Skipped (micro-session / no name)</td><td style={{ padding: '4px 8px' }}>{lastReceipt.recordsSkipped}</td></tr>
+              </tbody>
+            </table>
+            <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#475569' }}>
+              You can verify these records in <a href="/drilldown" style={{ color: '#097C87', fontWeight: 700 }}>Drilldown → Meeting History Log</a> or by printing the
+              {' '}<a href={`/admin/signin-sheet`} style={{ color: '#097C87', fontWeight: 700 }}>sign-in sheet</a> for this event.
+            </div>
+          </div>
+        )}
+
+        {/* Pre-commit confirmation modal. */}
+        {confirmOpen && (
+          <div role="dialog" aria-modal="true"
+               style={{ position: 'fixed', inset: 0, background: 'rgba(13, 46, 50, 0.5)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+            <div style={{ background: 'white', borderRadius: 12, maxWidth: 480, width: '100%', padding: 22, boxShadow: '0 18px 60px rgba(0,0,0,0.3)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--c1d)' }}>Confirm submission</h3>
+              <p style={{ fontSize: '0.92rem', color: '#475569', margin: '8px 0 14px' }}>
+                Review before committing to Supabase. This is irreversible without admin SQL.
+              </p>
+              <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', marginBottom: 14 }}>
+                <tbody>
+                  <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Event title</td><td style={{ padding: '4px 8px', fontWeight: 600 }}>{eventTitle}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Series</td><td style={{ padding: '4px 8px' }}>{seriesOptions.find((s) => s.id === selectedSeriesId)?.title || 'Standalone'}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Date</td><td style={{ padding: '4px 8px' }}>{eventDate}</td></tr>
+                  <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Duration</td><td style={{ padding: '4px 8px' }}>{baseDuration} min</td></tr>
+                  <tr><td style={{ padding: '4px 8px', color: '#475569' }}>Attendees in CSV</td><td style={{ padding: '4px 8px', fontWeight: 700 }}>{csvData.length}</td></tr>
+                </tbody>
+              </table>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setConfirmOpen(false)}
+                        style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 700,
+                                 border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
+                <button onClick={handleConfirmedSubmit}
+                        style={{ padding: '9px 14px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 700,
+                                 border: 'none', background: 'var(--c1)', color: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  📤 Send to database
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

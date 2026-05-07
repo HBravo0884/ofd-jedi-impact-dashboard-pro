@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { ADMIN_COOKIE_NAME, verifyAdmin } from '@/lib/adminAuth';
 import { prisma } from '@/lib/prisma';
+import { serializeTrace } from '@/lib/serializeTrace';
 import { isClinicianDegrees } from '@/lib/clinician';
 
 export const revalidate = 0;
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   // Cap at 10 baseline samples per faculty — beyond that the DTW search just
   // gets slower without improving accuracy.
   const existing = (f.signatureUrls || []).slice(-9);
-  const newBaseline = [...existing, JSON.stringify(signatureTrace).slice(0, 5000)];
+  const newBaseline = [...existing, serializeTrace(signatureTrace)];
   await prisma.faculty.update({
     where: { id: f.id },
     data: { signatureUrls: { set: newBaseline } },

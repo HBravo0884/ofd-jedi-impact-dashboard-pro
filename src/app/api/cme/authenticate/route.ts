@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { serializeTrace } from '@/lib/serializeTrace';
 import { prisma } from '@/lib/prisma';
 import { 
   extractPath, 
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
       await prisma.faculty.update({
         where: { id: faculty.id },
         data: {
-          signatureUrls: { push: JSON.stringify(signatureTrace).substring(0, 5000) } // Cap size
+          signatureUrls: { push: serializeTrace(signatureTrace) } // Cap size
         }
       });
     }

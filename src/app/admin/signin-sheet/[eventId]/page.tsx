@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import './print.css';
 import { SignatureSVG, pickLatestTrace } from '@/components/SignatureSVG';
+import { isClinicianDegrees } from '@/lib/clinician';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -51,6 +52,16 @@ export default async function SigninSheetPage({
   const traceById = new Map<string, any>();
   for (const r of traceRows) {
     if (r.signatureTrace) traceById.set(r.id, r.signatureTrace);
+  }
+
+  // Partition attendees into Clinical vs Non-Clinical for CME reporting.
+  // 'Clinical' = degrees include MD, DO, MBBS, MBChB, DDS, DMD, PharmD,
+  // BDS, OD, DVM, NP, PA, PA-C, or CRNA.
+  const clinicalAttendances: typeof event.attendances = [];
+  const nonClinicalAttendances: typeof event.attendances = [];
+  for (const a of event.attendances as any[]) {
+    if (isClinicianDegrees(a?.faculty?.degrees)) clinicalAttendances.push(a);
+    else nonClinicalAttendances.push(a);
   }
 
   const formatDate = (d: Date) =>
@@ -124,55 +135,91 @@ export default async function SigninSheetPage({
         {/* Attendance roster */}
         <section className="roster">
           <h3 className="roster-heading">Attendance Roster</h3>
-          {event.attendances.length === 0 ? (
+                    {event.attendances.length === 0 ? (
             <div className="empty">No attendees recorded for this session.</div>
-          ) : (
-            <table className="roster-table">
-              <thead>
-                <tr>
-                  <th className="col-num">#</th>
-                  <th className="col-name">Name</th>
-                  <th className="col-degrees">Degrees</th>
-                  <th className="col-dept">Department</th>
-                  <th className="col-mins">Min</th>
-                  <th className="col-sig">Signature</th>
+          ) : (() => {
+            const renderRow = (a: any, displayIdx: number) => {
+              const f = a.faculty;
+              const dept = String(f.department || '').replace(/([A-Z])/g, ' $1').trim();
+              const degrees = (f.degrees || []).join(', ');
+              const hasSignature = Array.isArray(f.signatureUrls) && f.signatureUrls.length > 0;
+              return (
+                <tr key={a.id}>
+                  <td className="col-num">{displayIdx + 1}</td>
+                  <td className="col-name">
+                    <div className="name-line">{f.lastName}, {f.firstName}</div>
+                    <div className="email-line">{f.email}</div>
+                  </td>
+                  <td className="col-degrees">{degrees || <span className="dash">—</span>}</td>
+                  <td className="col-dept">{dept}</td>
+                  <td className="col-mins">{a.durationJoined}</td>
+                  <td className="col-sig">
+                    {(() => {
+                      const eventTrace = traceById.get(a.id);
+                      const trace = eventTrace ?? (hasSignature ? pickLatestTrace(f.signatureUrls) : null);
+                      return trace
+                        ? <SignatureSVG trace={trace} width={180} height={48} />
+                        : <span className="sig-line">&nbsp;</span>;
+                    })()}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {event.attendances.map((a: any, i: number) => {
-                  const f = a.faculty;
-                  const dept = String(f.department || '').replace(/([A-Z])/g, ' $1').trim();
-                  const degrees = (f.degrees || []).join(', ');
-                  const hasSignature = Array.isArray(f.signatureUrls) && f.signatureUrls.length > 0;
-                  return (
-                    <tr key={a.id}>
-                      <td className="col-num">{i + 1}</td>
-                      <td className="col-name">
-                        <div className="name-line">{f.lastName}, {f.firstName}</div>
-                        <div className="email-line">{f.email}</div>
-                      </td>
-                      <td className="col-degrees">{degrees || <span className="dash">—</span>}</td>
-                      <td className="col-dept">{dept}</td>
-                      <td className="col-mins">{a.durationJoined}</td>
-                      <td className="col-sig">
-                        {(() => {
-                          // Prefer the signature captured AT THIS event;
-                          // fall back to the latest baseline so older
-                          // check-ins (or CSV-ingested attendance) still
-                          // render something defensible on the sheet.
-                          const eventTrace = traceById.get(a.id);
-                          const trace = eventTrace ?? (hasSignature ? pickLatestTrace(f.signatureUrls) : null);
-                          return trace
-                            ? <SignatureSVG trace={trace} width={180} height={48} />
-                            : <span className="sig-line">&nbsp;</span>;
-                        })()}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+              );
+            };
+
+            return (
+              <>
+                {/* CLINICAL — eligible for CME credit */}
+                <div className="group-header">
+                  <h4>Clinical Attendees · {clinicalAttendances.length}</h4>
+                  <span className="group-tag clinical">CME-eligible (MD / DO / MBBS / etc.)</span>
+                </div>
+                {clinicalAttendances.length === 0 ? (
+                  <div className="empty">No clinical attendees on file.</div>
+                ) : (
+                  <table className="roster-table">
+                    <thead>
+                      <tr>
+                        <th className="col-num">#</th>
+                        <th className="col-name">Name</th>
+                        <th className="col-degrees">Degrees</th>
+                        <th className="col-dept">Department</th>
+                        <th className="col-mins">Min</th>
+                        <th className="col-sig">Signature</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clinicalAttendances.map((a: any, i: number) => renderRow(a, i))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* NON-CLINICAL — listed for completeness, not CME-eligible */}
+                <div className="group-header" style={{ marginTop: 22 }}>
+                  <h4>Non-Clinical Attendees · {nonClinicalAttendances.length}</h4>
+                  <span className="group-tag nonclinical">Not CME-eligible</span>
+                </div>
+                {nonClinicalAttendances.length === 0 ? (
+                  <div className="empty">No non-clinical attendees.</div>
+                ) : (
+                  <table className="roster-table">
+                    <thead>
+                      <tr>
+                        <th className="col-num">#</th>
+                        <th className="col-name">Name</th>
+                        <th className="col-degrees">Degrees</th>
+                        <th className="col-dept">Department</th>
+                        <th className="col-mins">Min</th>
+                        <th className="col-sig">Signature</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nonClinicalAttendances.map((a: any, i: number) => renderRow(a, i))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            );
+          })()}
         </section>
 
         {/* Footer / certification */}
