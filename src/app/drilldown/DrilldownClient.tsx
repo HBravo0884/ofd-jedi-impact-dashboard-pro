@@ -54,6 +54,29 @@ export default function DrilldownClient({ payload }: { payload: any }) {
       }
   });
 
+  const handlePersonCSV = () => {
+    if (!matchedFac) return;
+    const rows = (payload.personEventsMap || {})[selectedFac] || [];
+    if (rows.length === 0) return;
+    let csvContent = 'Date,Series,Topic,Duration (min)\n';
+    rows.forEach((r: any) => {
+      const escape = (v: any) => {
+        const s = String(v ?? '');
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      csvContent += [escape(r.date), escape(r.series), escape(r.topic), escape(r.duration)].join(',') + '\n';
+    });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeName = matchedFac.name.replace(/[^a-zA-Z0-9]/g, '_');
+    link.download = `meeting_history_${safeName}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleLogCSV = () => {
     let csvContent = "Date,Series,Topic,Engagements\n";
     payload.globalEventLog.forEach((row: any) => {
@@ -135,6 +158,47 @@ export default function DrilldownClient({ payload }: { payload: any }) {
                   indexAxis="y"
                />
             </div>
+
+            {/* Per-person Meeting History Log — parity with the legacy HTML.
+                Lists each event the selected attendee participated in, with
+                date / series / topic / duration; CSV-exportable. */}
+            {(payload.personEventsMap?.[selectedFac]?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 18, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap', gap: 8 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--c1d)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Meeting History Log
+                  </h4>
+                  <button
+                    onClick={handlePersonCSV}
+                    style={{ background: '#f0f7f8', border: '1px solid #d4eaec', borderRadius: 4, padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#065e68', cursor: 'pointer' }}
+                  >
+                    CSV dataset
+                  </button>
+                </div>
+                <div className="table-scroll">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead style={{ background: '#f8fafc', color: '#0f1e2d' }}>
+                      <tr>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Date</th>
+                        <th style={{ padding: '8px 12px' }}>Series</th>
+                        <th style={{ padding: '8px 12px' }}>Topic</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>Duration (min)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(payload.personEventsMap?.[selectedFac] || []).map((r: any, i: number) => (
+                        <tr key={i} style={{ borderTop: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#0f1e2d', fontWeight: 500 }}>{r.date}</td>
+                          <td style={{ padding: '8px 12px', color: '#334155' }}>{r.series}</td>
+                          <td style={{ padding: '8px 12px', color: '#0f1e2d' }}>{r.topic}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#097c87', fontWeight: 700 }}>{r.duration}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
          </div>
          
       </div>
