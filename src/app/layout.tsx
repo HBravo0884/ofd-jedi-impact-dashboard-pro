@@ -84,6 +84,11 @@ export default async function RootLayout({
                 </a>
               )}
               {isAdmin && (
+                <Link href="/admin/events" className="hdr-pill hdr-pill-orange">
+                  📅 Manage Events
+                </Link>
+              )}
+              {isAdmin && (
                 <Link href="/admin/ingestion" className="hdr-pill hdr-pill-orange">
                   ⚙️ Manage Data
                 </Link>
