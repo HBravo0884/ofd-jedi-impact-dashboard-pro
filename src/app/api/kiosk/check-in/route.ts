@@ -20,7 +20,10 @@ export const revalidate = 0;
 // Returns DTW biometric similarity if a signature baseline exists.
 export async function POST(req: Request) {
   try {
-    const { facultyId, name, eventId, signatureTrace } = await req.json();
+    const body = await req.json();
+    const { facultyId, name, eventId, signatureTrace } = body || {};
+    const attempt    = Number.isFinite(Number(body?.attempt))     ? Math.max(1, Number(body.attempt))     : 1;
+    const maxAttempts = Number.isFinite(Number(body?.maxAttempts)) ? Math.max(1, Number(body.maxAttempts)) : 3;
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required.' }, { status: 400 });
@@ -138,13 +141,58 @@ export async function POST(req: Request) {
           }
           mlScore = bestScore;
         }
-        // Append this trace to the faculty's history (capped to ~5KB per trace).
+      } catch (e) {
+        console.warn('signature scoring failed (non-fatal):', e);
+      }
+    }
+
+    // Retry guard — if the signature scored too low AND the kiosk has
+    // more attempts allowed, hand the work back to the client without
+    // committing anything. We also don't push the bad sample to the
+    // baseline. Only applies to clinicians with an existing baseline,
+    // since non-clinicians don't have a confidence to compare against.
+    const retryMin = parseFloat(
+      (typeof process !== 'undefined' && process.env?.SIGNATURE_RETRY_MIN) ||
+      (typeof process !== 'undefined' && process.env?.SIGNATURE_POSSIBLE_MIN) ||
+      '40'
+    );
+    if (
+      hasSignature &&
+      mlScore !== -1 &&                  // skip 'first sample / baseline acquired'
+      clinician &&                       // only require retries for clinicians
+      mlScore < retryMin &&
+      attempt < maxAttempts
+    ) {
+      return NextResponse.json({
+        ok: false,
+        retry: true,
+        attempt,
+        maxAttempts,
+        attemptsLeft: maxAttempts - attempt,
+        mlScore,
+        mlAction: bucketForScore(mlScore),
+        faculty: {
+          id: faculty.id,
+          firstName: faculty.firstName,
+          lastName: faculty.lastName,
+          isClinician: clinician,
+        },
+        message:
+          'Your signature didn\'t closely match the on-file baseline. Please try again, signing a little more deliberately in your usual style.',
+      });
+    }
+
+    // Now actually persist: append the signature trace to the baseline (if
+    // we have one) so future check-ins compare against this newer sample,
+    // and write the attendance row.
+    if (hasSignature) {
+      try {
         await prisma.faculty.update({
           where: { id: faculty.id },
           data: { signatureUrls: { push: JSON.stringify(signatureTrace).slice(0, 5000) } },
         });
       } catch (e) {
-        console.warn('signature scoring failed (non-fatal):', e);
+        console.warn('signature persist failed (non-fatal):', e);
       }
     }
 
