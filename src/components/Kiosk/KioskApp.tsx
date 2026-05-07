@@ -23,6 +23,10 @@ export default function KioskApp() {
   const [activeBaselineCount, setActiveBaselineCount] = useState<number>(0);
   const [lastMlScore, setLastMlScore] = useState<number | null>(null);
   const [lastMlAction, setLastMlAction] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState<number>(1);
+  const [retryHint, setRetryHint] = useState<string | null>(null);
+  const [retryScore, setRetryScore] = useState<number | null>(null);
+  const MAX_ATTEMPTS = 3;
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -131,6 +135,9 @@ export default function KioskApp() {
     setActiveBaselineCount(r.signatureBaselineCount);
     setSearchName(r.name);
     setAutocomplete([]);
+    setAttempt(1);
+    setRetryHint(null);
+    setRetryScore(null);
     setScreen('SIGNATURE');
   };
 
@@ -143,8 +150,11 @@ export default function KioskApp() {
     }
     setActiveFacultyId(null);
     setActiveFacultyDisplay(v);
-    setActiveIsClinician(false); // unknown — treat as optional until DB resolves
+    setActiveIsClinician(false);
     setActiveBaselineCount(0);
+    setAttempt(1);
+    setRetryHint(null);
+    setRetryScore(null);
     setAutocomplete([]);
     setScreen('SIGNATURE');
   };
@@ -153,6 +163,8 @@ export default function KioskApp() {
   const submit = async () => {
     if (!activeEvent) return;
     setErrorMessage(null);
+    setRetryHint(null);
+    setRetryScore(null);
     setSubmitting(true);
 
     const trace = sigPad.current && !sigPad.current.isEmpty() ? sigPad.current.toData() : [];
@@ -166,9 +178,28 @@ export default function KioskApp() {
           facultyId: activeFacultyId || undefined,
           name: activeFacultyId ? undefined : activeFacultyDisplay,
           signatureTrace: trace,
+          attempt,
+          maxAttempts: MAX_ATTEMPTS,
         }),
       });
       const data = await res.json();
+
+      // Server says: signature too low, please retry. Don't commit; give
+      // the user a chance to re-sign more deliberately.
+      if (data && data.retry === true) {
+        setRetryScore(typeof data.mlScore === 'number' ? data.mlScore : null);
+        setRetryHint(
+          typeof data.message === 'string'
+            ? data.message
+            : 'Your signature didn\'t closely match. Please try again.'
+        );
+        setAttempt((n) => n + 1);
+        sigPad.current?.clear();
+        setHasSignature(false);
+        setSubmitting(false);
+        return;
+      }
+
       if (!res.ok || !data.ok) {
         throw new Error(data?.error || 'Server rejected the check-in.');
       }
@@ -184,6 +215,9 @@ export default function KioskApp() {
         setActiveBaselineCount(0);
         setLastMlScore(null);
         setLastMlAction(null);
+        setAttempt(1);
+        setRetryHint(null);
+        setRetryScore(null);
         setAutocomplete([]);
         setScreen('NAME');
       }, 2400);
@@ -287,6 +321,34 @@ export default function KioskApp() {
             <p className={styles.lead}>
               Signing in: <strong style={{ color: '#097C87' }}>{activeFacultyDisplay}</strong>
             </p>
+            {retryHint && (
+              <div
+                role="alert"
+                style={{
+                  background: '#fff7ed',
+                  border: '1px solid #fdba74',
+                  color: '#9a3412',
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  margin: '10px auto 14px',
+                  maxWidth: 560,
+                  textAlign: 'center',
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                  Try again — attempt {attempt} of {MAX_ATTEMPTS}
+                  {retryScore !== null && (
+                    <span style={{ color: '#c2410c', marginLeft: 8 }}>
+                      ({Math.round(retryScore)}% match)
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{retryHint}</div>
+              </div>
+            )}
             <div style={{ textAlign: 'center', marginBottom: 14, fontSize: '0.85rem', fontWeight: 600 }}>
               {activeIsClinician ? (
                 <span style={{ color: '#b91c1c' }}>
