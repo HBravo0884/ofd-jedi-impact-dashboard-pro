@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { isClinicianDegrees } from '@/lib/clinician';
 
 export const revalidate = 0;
 
 // PUBLIC — used by the iPad kiosk autocomplete. Returns up to 12 matching
-// faculty by case-insensitive prefix on first or last name. Returns ONLY
-// id / firstName / lastName / department — no emails, ranks, or attendance
-// counts, so a kiosk left in public space doesn't leak personal data.
+// faculty by case-insensitive prefix on first or last name.
+//
+// Returns:
+//   id, name, dept                  → display in the autocomplete
+//   isClinician                     → drives signature-required gating
+//   signatureBaselineCount          → 'we have N trained signatures'
+//                                     (used by the kiosk to warn the user
+//                                     that their first sign-in won't be
+//                                     biometrically verified)
+//
+// Deliberately does NOT return emails, ranks, or attendance counts so a
+// kiosk left in public space doesn't expose personal data.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') || '').trim();
@@ -22,7 +32,14 @@ export async function GET(req: Request) {
         { lastName:  { contains: q, mode: 'insensitive' } },
       ],
     },
-    select: { id: true, firstName: true, lastName: true, department: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      department: true,
+      degrees: true,
+      signatureUrls: true,
+    },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     take: 12,
   });
@@ -32,6 +49,8 @@ export async function GET(req: Request) {
       id: r.id,
       name: `${r.lastName}, ${r.firstName}`,
       dept: String(r.department || '').replace(/([A-Z])/g, ' $1').trim(),
+      isClinician: isClinicianDegrees(r.degrees),
+      signatureBaselineCount: Array.isArray(r.signatureUrls) ? r.signatureUrls.length : 0,
     })),
   });
 }
