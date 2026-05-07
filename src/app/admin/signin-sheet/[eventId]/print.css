@@ -1,0 +1,186 @@
+/* ── Sign-in sheet — screen + print styles ─────────────────────────────── */
+
+.signin-sheet {
+  background: #f0f7f8;
+  color: #0d2e32;
+  min-height: 100vh;
+  font-family: -apple-system, system-ui, 'Segoe UI', Arial, sans-serif;
+  padding: 24px;
+}
+
+.toolbar {
+  max-width: 1100px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toolbar-link {
+  color: #097C87;
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.toolbar-spacer { flex: 1; }
+.print-btn {
+  background: #097C87;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.print-btn:hover { background: #065e68; }
+
+.sheet {
+  background: white;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 36px 44px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+  border-radius: 4px;
+}
+
+.sheet-head {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  border-bottom: 3px solid #097C87;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+.sheet-logo { width: 64px; height: 64px; object-fit: contain; }
+.sheet-title { font-family: 'Garamond', 'EB Garamond', serif; font-size: 1.5rem; line-height: 1.2; margin: 0; }
+.sheet-subtitle { font-size: 0.95rem; color: #475569; font-weight: 600; margin-top: 4px; }
+.sheet-meta { font-size: 0.8rem; color: #475569; text-align: right; line-height: 1.4; }
+
+.event-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 14px 18px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+.fact-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  font-weight: 700;
+}
+.fact-value { font-size: 0.98rem; color: #0d2e32; font-weight: 600; margin-top: 2px; }
+
+.roster-heading {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #097C87;
+  font-weight: 800;
+  margin: 0 0 10px;
+}
+
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.roster-table thead th {
+  background: #097C87;
+  color: white;
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.roster-table tbody tr { border-bottom: 1px solid #e2e8f0; }
+.roster-table tbody tr:nth-child(even) { background: #f8fafc; }
+.roster-table td { padding: 7px 10px; vertical-align: top; }
+
+.col-num     { width: 36px; text-align: right; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.col-name    { font-weight: 600; }
+.col-degrees { width: 100px; color: #475569; }
+.col-dept    { width: 180px; color: #475569; }
+.col-mins    { width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.col-sig     { width: 220px; }
+
+.name-line { font-weight: 600; color: #0d2e32; }
+.email-line { font-size: 0.72rem; color: #64748b; margin-top: 1px; }
+.dash { color: #cbd5e1; }
+.sig-mark {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  background: #e0f2f1;
+  color: #065e68;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.sig-line {
+  display: block;
+  border-bottom: 1px solid #cbd5e1;
+  height: 18px;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-style: italic;
+}
+
+.sheet-foot {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 2px solid #e2e8f0;
+}
+.cert {
+  font-size: 0.75rem;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 36px;
+}
+.signoff { display: flex; gap: 28px; align-items: flex-end; }
+.signoff-line { flex: 1; }
+.signoff-blank { border-bottom: 1px solid #0d2e32; height: 28px; }
+.signoff-label {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 700;
+}
+
+/* ── PRINT-SPECIFIC ────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+  body { background: white; }
+  .signin-sheet { background: white; padding: 0; }
+  .no-print, .toolbar { display: none !important; }
+  .sheet {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .roster-table thead { display: table-header-group; } /* repeat header on each page */
+  .roster-table tbody tr { page-break-inside: avoid; }
+  .signoff { page-break-inside: avoid; }
+  .sheet-head { page-break-after: avoid; }
+  .event-facts { page-break-after: avoid; }
+}

@@ -8,6 +8,7 @@ const PALETTE = [C1, C2, C3, C4, C5];
 
 export default function SeriesClient({ seriesData, globalTimeline }: { seriesData: any[], globalTimeline: any }) {
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [showPercentages, setShowPercentages] = useState<boolean>(false);
 
   if (!seriesData || seriesData.length === 0) {
     return <div style={{ padding: '20px' }}>No Series Data Available</div>;
@@ -15,7 +16,9 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
 
   const activeSeries = seriesData[activeIndex];
 
-  const compositionDatasets = activeSeries.sessionMatrixDatasets.map((dataSet: any) => {
+  // Build raw composition (absolute counts) and a percentage view that
+  // normalizes each dept's contribution to 100% of the series total.
+  const compositionRaw = activeSeries.sessionMatrixDatasets.map((dataSet: any) => {
     const totalDeptAttendance = dataSet.data.reduce((sum: number, val: number) => sum + val, 0);
     return {
       label: dataSet.label,
@@ -23,6 +26,13 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
       data: [totalDeptAttendance]
     };
   });
+  const compositionTotal = compositionRaw.reduce((s: number, ds: any) => s + (ds.data[0] || 0), 0);
+  const compositionDatasets = showPercentages && compositionTotal > 0
+    ? compositionRaw.map((ds: any) => ({
+        ...ds,
+        data: [Number(((ds.data[0] / compositionTotal) * 100).toFixed(1))],
+      }))
+    : compositionRaw;
 
   const individualSessionsMatrix = [
     ...activeSeries.sessionMatrixDatasets,
@@ -82,9 +92,24 @@ export default function SeriesClient({ seriesData, globalTimeline }: { seriesDat
             <h2 style={{ fontSize: '1.05rem', color: '#0f1e2d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
                Composition & Penetration Strategy
             </h2>
-            <select style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: 600, color: '#334155', background: '#f8fafc' }}>
-               <option>By Department</option>
-            </select>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowPercentages((v) => !v)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6,
+                  border: '1px solid ' + (showPercentages ? 'var(--c1)' : '#cbd5e1'),
+                  background: showPercentages ? 'var(--c1)' : '#f8fafc',
+                  color: showPercentages ? 'white' : '#334155',
+                  fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+                title="Toggle between absolute counts and percentages"
+              >
+                {showPercentages ? '% Showing Percentages' : '% Show Percentages'}
+              </button>
+              <select style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: 600, color: '#334155', background: '#f8fafc' }}>
+                <option>By Department</option>
+              </select>
+            </div>
          </div>
 
          {/* Side-by-side on desktop, stacked on mobile via .split-row utility */}
