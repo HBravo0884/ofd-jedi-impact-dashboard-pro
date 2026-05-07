@@ -13,7 +13,10 @@ interface TestResult {
   mlAction: 'VERIFIED' | 'POSSIBLE_MATCH' | 'SUSPICIOUS_MISMATCH' | 'NO_BASELINE';
   bestSampleIndex: number;
   bestDtw: number;
-  perSample: Array<{ index: number; dtw: number; confidence: number }>;
+  perSample: Array<{
+    index: number; dtw: number; confidence: number;
+    dtwOnly?: number; arMul?: number; strokeMul?: number; pathMul?: number;
+  }>;
 }
 interface FacultyRow {
   id: string;
@@ -495,23 +498,31 @@ function TestResultPanel({ result }: { result: TestResult }) {
         <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: palette.fg, fontWeight: 600 }}>
           Per-sample breakdown ({result.perSample.length})
         </summary>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: '0.85rem', background: 'rgba(255,255,255,0.5)', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: '0.82rem', background: 'rgba(255,255,255,0.5)', borderRadius: 8, overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: 'rgba(0,0,0,0.06)' }}>
-              <th style={{ padding: '6px 10px', textAlign: 'left' }}>Sample #</th>
-              <th style={{ padding: '6px 10px', textAlign: 'right' }}>DTW distance</th>
-              <th style={{ padding: '6px 10px', textAlign: 'right' }}>Confidence</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Sample</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }} title="Dynamic Time Warping cost. Lower = more similar path.">DTW</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }} title="Confidence from DTW alone, before structural penalties.">DTW %</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }} title="Aspect-ratio penalty multiplier.">×AR</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }} title="Stroke-count penalty multiplier.">×Strokes</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }} title="Path-length penalty multiplier.">×Length</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>Final %</th>
             </tr>
           </thead>
           <tbody>
             {result.perSample.map((row) => (
               <tr key={row.index} style={{ borderTop: '1px solid rgba(0,0,0,0.05)', fontWeight: row.index === result.bestSampleIndex ? 700 : 400 }}>
-                <td style={{ padding: '6px 10px' }}>
-                  Sample #{row.index + 1}
+                <td style={{ padding: '6px 8px' }}>
+                  #{row.index + 1}
                   {row.index === result.bestSampleIndex && <span style={{ marginLeft: 6, padding: '1px 8px', background: palette.bar, color: 'white', borderRadius: 999, fontSize: '0.7rem' }}>best</span>}
                 </td>
-                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{row.dtw.toFixed(3)}</td>
-                <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(row.confidence)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number.isFinite(row.dtw) ? row.dtw.toFixed(2) : '∞'}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(row.dtwOnly ?? 0)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{((row.arMul ?? 1) * 100).toFixed(0)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{((row.strokeMul ?? 1) * 100).toFixed(0)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{((row.pathMul ?? 1) * 100).toFixed(0)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{Math.round(row.confidence)}%</td>
               </tr>
             ))}
           </tbody>
