@@ -41,6 +41,18 @@ export default async function SigninSheetPage({
 
   if (!event) return notFound();
 
+  // Per-event signature traces — one per Attendance row. Prisma client
+  // wasn't regenerated to know about the new signatureTrace column, so
+  // we side-query with raw SQL and build a Map keyed by attendance id.
+  const traceRows = (await prisma.$queryRawUnsafe(
+    `SELECT id, "signatureTrace" FROM "Attendance" WHERE "eventId" = $1`,
+    eventId
+  )) as Array<{ id: string; signatureTrace: any }>;
+  const traceById = new Map<string, any>();
+  for (const r of traceRows) {
+    if (r.signatureTrace) traceById.set(r.id, r.signatureTrace);
+  }
+
   const formatDate = (d: Date) =>
     d.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -143,11 +155,17 @@ export default async function SigninSheetPage({
                       <td className="col-dept">{dept}</td>
                       <td className="col-mins">{a.durationJoined}</td>
                       <td className="col-sig">
-                        {hasSignature ? (
-                          <SignatureSVG trace={pickLatestTrace(f.signatureUrls)} width={180} height={48} />
-                        ) : (
-                          <span className="sig-line">&nbsp;</span>
-                        )}
+                        {(() => {
+                          // Prefer the signature captured AT THIS event;
+                          // fall back to the latest baseline so older
+                          // check-ins (or CSV-ingested attendance) still
+                          // render something defensible on the sheet.
+                          const eventTrace = traceById.get(a.id);
+                          const trace = eventTrace ?? (hasSignature ? pickLatestTrace(f.signatureUrls) : null);
+                          return trace
+                            ? <SignatureSVG trace={trace} width={180} height={48} />
+                            : <span className="sig-line">&nbsp;</span>;
+                        })()}
                       </td>
                     </tr>
                   );

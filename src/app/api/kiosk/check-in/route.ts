@@ -209,6 +209,24 @@ export async function POST(req: Request) {
       },
     });
 
+    // Save the actual signature captured at THIS event so the sign-in sheet
+    // PDF renders the exact signature from this check-in (not just the
+    // latest baseline). Prisma client wasn't regenerated to know about the
+    // new Attendance.signatureTrace column, so we use a raw UPDATE.
+    if (hasSignature) {
+      try {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Attendance" SET "signatureTrace" = $1::jsonb
+            WHERE "facultyId" = $2 AND "eventId" = $3`,
+          JSON.stringify(signatureTrace),
+          faculty.id,
+          event.id
+        );
+      } catch (e) {
+        console.warn('per-event signature persist failed (non-fatal):', e);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       faculty: {
