@@ -24,17 +24,17 @@ export default function RosterClient({ events }: { events: any[] }) {
   };
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: 'clamp(14px, 3vw, 24px)', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
        
        <h3 style={{ fontSize: '0.85rem', color: '#097c87', fontWeight: 800, textTransform: 'uppercase', marginBottom: '16px' }}>
           Session Signup Sheet (Event Roster)
        </h3>
 
-       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px' }}>
+       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap' }}>
           <select 
              value={selectedEventId}
              onChange={(e) => setSelectedEventId(e.target.value)}
-             style={{ flex: 1, padding: '10px 14px', borderRadius: '6px', border: '1px solid #097c87', fontSize: '0.9rem', color: '#0f1e2d', fontWeight: 600, background: '#f8fafc', outline: 'none', cursor: 'pointer' }}
+             style={{ flex: '1 1 220px', minWidth: 0, padding: '10px 14px', borderRadius: '6px', border: '1px solid #097c87', fontSize: '0.9rem', color: '#0f1e2d', fontWeight: 600, background: '#f8fafc', outline: 'none', cursor: 'pointer' }}
           >
              {events.length === 0 && <option value="">No Events Found</option>}
              {events.map(ev => (
@@ -51,7 +51,7 @@ export default function RosterClient({ events }: { events: any[] }) {
        </div>
 
        {activeEvent && activeEvent.attendees.length > 0 ? (
-           <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #097c87' }}>
+           <div className="table-scroll" style={{ borderRadius: '8px', border: '1px solid #097c87' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                  <thead style={{ background: '#097c87', color: '#fff' }}>
                     <tr>
@@ -65,9 +65,8 @@ export default function RosterClient({ events }: { events: any[] }) {
                  <tbody>
                     {activeEvent.attendees.map((a:any, idx:number) => (
                        <tr key={a.id} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                          <td style={{ padding: '12px 20px', color: '#097c87', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: '#cbd5e1', fontSize: '1.2rem' }}>✎</span>
-                              {a.name}
+                          <td style={{ padding: '12px 20px', color: '#097c87', fontWeight: 700 }}>
+                              <span style={{ color: '#cbd5e1', marginRight: '6px' }}>✎</span>{a.name}
                           </td>
                           <td style={{ padding: '12px 20px', color: '#475569' }}>{a.rank}</td>
                           <td style={{ padding: '12px 20px', color: '#475569' }}>{a.division}</td>
