@@ -2,152 +2,329 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import SignaturePad from 'signature_pad';
+import styles from './Kiosk.module.css';
+
+type Screen = 'EVENT_PICK' | 'NAME' | 'SIGNATURE' | 'THANKS';
+interface KioskEvent { id: string; title: string; date: string; series: string | null; }
+interface AutoResult { id: string; name: string; dept: string; }
+
+const SESSION_KEY = 'hucm_kiosk_active_event_v1';
 
 export default function KioskApp() {
-    const [searchName, setSearchName] = useState('');
-    const [activeProfile, setActiveProfile] = useState<{name: string, dept: string, isClinician: boolean} | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const sigPad = useRef<any>(null);
-    const [screen, setScreen] = useState<'HOME' | 'SIGNATURE' | 'THANK_YOU'>('HOME');
+  const [screen, setScreen] = useState<Screen>('EVENT_PICK');
+  const [events, setEvents] = useState<KioskEvent[]>([]);
+  const [activeEvent, setActiveEvent] = useState<KioskEvent | null>(null);
 
-    useEffect(() => {
-        if (screen === 'SIGNATURE' && canvasRef.current) {
-            // Setup Signature Canvas exactly mimicking HTML
-            const canvas = canvasRef.current;
-            sigPad.current = new SignaturePad(canvas, {
-                minWidth: 1.5,
-                maxWidth: 4.5,
-                penColor: "rgb(15, 30, 45)"
-            });
+  const [searchName, setSearchName] = useState('');
+  const [autocomplete, setAutocomplete] = useState<AutoResult[]>([]);
+  const [activeFacultyId, setActiveFacultyId] = useState<string | null>(null);
+  const [activeFacultyDisplay, setActiveFacultyDisplay] = useState<string>('');
 
-            const resizeCanvas = () => {
-                const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                canvas.width = canvas.offsetWidth * ratio;
-                canvas.height = canvas.offsetHeight * ratio;
-                canvas.getContext("2d")?.scale(ratio, ratio);
-                sigPad.current?.clear(); 
-            };
-            window.addEventListener("resize", resizeCanvas);
-            resizeCanvas();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
 
-            return () => window.removeEventListener("resize", resizeCanvas);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sigPad = useRef<SignaturePad | null>(null);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load active event from sessionStorage; fetch events list on mount ────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as KioskEvent;
+        if (parsed?.id && parsed?.title) {
+          setActiveEvent(parsed);
+          setScreen('NAME');
         }
-    }, [screen]);
+      }
+    } catch {}
+    (async () => {
+      try {
+        const r = await fetch('/api/kiosk/events');
+        const j = await r.json();
+        setEvents(j.events || []);
+      } catch (e) {
+        console.warn('Could not load events list:', e);
+      }
+    })();
+  }, []);
 
-    const handleSearchCheck = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        setSearchName(val);
+  // ── Mount the signature pad whenever the SIGNATURE screen shows ──────────
+  useEffect(() => {
+    if (screen !== 'SIGNATURE' || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const pad = new SignaturePad(canvas, {
+      minWidth: 1.5,
+      maxWidth: 4.5,
+      penColor: 'rgb(15, 30, 45)',
+    });
+    sigPad.current = pad;
+    setHasSignature(false);
+
+    const resize = () => {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      canvas.width = canvas.offsetWidth * ratio;
+      canvas.height = canvas.offsetHeight * ratio;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(ratio, ratio);
+      pad.clear();
+      setHasSignature(false);
     };
+    window.addEventListener('resize', resize);
+    resize();
 
-    const attemptLogin = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchName.trim().length > 3) {
-            // Emulate an automatic matched clinician selection based on regex rules from Python Script
-            const isClin = /\b(MD|D\.O\.|DO|MBBS|PHYSICIAN|CLINICIAN|SURGEON)\b/i.test(searchName);
-            setActiveProfile({
-                name: searchName.trim(),
-                dept: "Office of Faculty Development",
-                isClinician: isClin
-            });
-            setScreen('SIGNATURE');
-        } else {
-            alert("Please type a valid full name to continue.");
-        }
+    pad.addEventListener('endStroke', () => setHasSignature(!pad.isEmpty()));
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      pad.off();
     };
+  }, [screen]);
 
-    const submitSignature = () => {
-        if (sigPad.current && sigPad.current.isEmpty() && activeProfile?.isClinician) {
-            alert("As a clinician, a valid signature is required for CME accreditation.");
-            return;
-        }
+  // ── Autocomplete: debounce + fetch on each keystroke past 2 chars ────────
+  const onSearchChange = (val: string) => {
+    setSearchName(val);
+    setActiveFacultyId(null);
+    setErrorMessage(null);
+    if (debounce.current) clearTimeout(debounce.current);
+    if (val.trim().length < 2) {
+      setAutocomplete([]);
+      return;
+    }
+    debounce.current = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/kiosk/faculty-search?q=' + encodeURIComponent(val.trim()));
+        const j = await r.json();
+        setAutocomplete(j.results || []);
+      } catch {
+        setAutocomplete([]);
+      }
+    }, 220);
+  };
 
-        const trace = sigPad.current ? sigPad.current.toData() : [];
-        console.log("Submitting DTW Machine Learning Trace Payload:", trace);
+  // ── Pick an event → save & advance to NAME screen ────────────────────────
+  const pickEvent = (ev: KioskEvent) => {
+    setActiveEvent(ev);
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(ev)); } catch {}
+    setScreen('NAME');
+  };
+  const exitKioskMode = () => {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch {}
+    setActiveEvent(null);
+    setSearchName('');
+    setAutocomplete([]);
+    setActiveFacultyId(null);
+    setScreen('EVENT_PICK');
+  };
 
-        setScreen('THANK_YOU');
-        setTimeout(() => {
-            setSearchName('');
-            setActiveProfile(null);
-            setScreen('HOME');
-        }, 2000);
-    };
+  // ── Pick a faculty from autocomplete ─────────────────────────────────────
+  const pickFaculty = (r: AutoResult) => {
+    setActiveFacultyId(r.id);
+    setActiveFacultyDisplay(r.name);
+    setSearchName(r.name);
+    setAutocomplete([]);
+    setScreen('SIGNATURE');
+  };
 
-    return (
-        <div className="w-full bg-white/90 backdrop-blur-md rounded-2xl border border-white/40 shadow-2xl p-10 flex flex-col items-center">
-            
-            {screen === 'HOME' && (
-                <div className="w-full max-w-lg text-center animate-in fade-in zoom-in duration-300">
-                    <h2 className="text-4xl font-bold text-[#097C87] mb-2 font-serif">Welcome</h2>
-                    <p className="text-lg text-slate-500 mb-8 font-medium">Type your name to confidently sign-in via the Identity Matrix.</p>
-                    <form onSubmit={attemptLogin} className="w-full relative">
-                        <input 
-                            value={searchName}
-                            onChange={handleSearchCheck}
-                            placeholder="Enter First or Last Name..." 
-                            className="w-full p-5 text-xl text-slate-800 border-2 border-slate-300 rounded-xl mb-6 bg-white focus:outline-none focus:border-[#097C87] focus:ring-4 focus:ring-[#097C87]/20 transition-all font-semibold shadow-inner"
-                        />
-                        <button type="submit" className="w-full bg-gradient-to-r from-[#097C87] to-[#23CED9] text-white font-bold text-xl py-5 rounded-xl shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all hov active:scale-95">
-                            Locate Profile
-                        </button>
-                    </form>
-                    <p className="text-sm text-slate-400 mt-6 tracking-wide">Need help? Please see the registration desk or an OFD representative.</p>
-                </div>
-            )}
+  // ── Continue with a typed-but-unmatched name ─────────────────────────────
+  const useTypedName = () => {
+    const v = searchName.trim();
+    if (v.length < 3) {
+      setErrorMessage('Please type your full name.');
+      return;
+    }
+    setActiveFacultyId(null);
+    setActiveFacultyDisplay(v);
+    setAutocomplete([]);
+    setScreen('SIGNATURE');
+  };
 
-            {screen === 'SIGNATURE' && activeProfile && (
-                <div className="w-full max-w-3xl animate-in slide-in-from-right-8 duration-300">
-                    <h2 className="text-3xl font-bold text-slate-800 mb-2">Confirm Attendance</h2>
-                    <p className="text-xl text-slate-600 mb-1">
-                        Signing in: <strong className="text-[#097C87]">{activeProfile.name}</strong> <span className="text-sm">({activeProfile.dept})</span>
-                    </p>
-                    <div className="mb-4">
-                        {activeProfile.isClinician ? 
-                            <span className="text-red-500 font-bold text-sm tracking-wide">* Valid Legal Signature Required for CME Credit Audit</span> : 
-                            <span className="text-slate-500 text-sm tracking-wide">(Signature Optional for Non-Clinicians)</span>
-                        }
+  // ── Submit registration ──────────────────────────────────────────────────
+  const submit = async () => {
+    if (!activeEvent) return;
+    setErrorMessage(null);
+    setSubmitting(true);
+
+    const trace = sigPad.current && !sigPad.current.isEmpty() ? sigPad.current.toData() : [];
+
+    try {
+      const res = await fetch('/api/kiosk/check-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: activeEvent.id,
+          facultyId: activeFacultyId || undefined,
+          name: activeFacultyId ? undefined : activeFacultyDisplay,
+          signatureTrace: trace,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || 'Server rejected the check-in.');
+      }
+      setScreen('THANKS');
+      // Auto-reset back to NAME screen for the next attendee.
+      setTimeout(() => {
+        setSearchName('');
+        setActiveFacultyDisplay('');
+        setActiveFacultyId(null);
+        setAutocomplete([]);
+        setScreen('NAME');
+      }, 2400);
+    } catch (e: any) {
+      setErrorMessage(e?.message || 'Could not submit. Try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────
+  return (
+    <div className={styles.shell}>
+      <div className={styles.container}>
+        <header className={styles.header}>
+          <div className={styles.headerLeft}>
+            <img src="/hucm_logo.png" alt="HUCM Seal" className={styles.logo} />
+            <div>
+              <div className={styles.headerTitle}>Howard University College of Medicine</div>
+              <div className={styles.headerSub}>Office of Faculty Development &amp; JEDI · Programming Kiosk</div>
+            </div>
+          </div>
+          {activeEvent && (
+            <div className={styles.headerEvent}>
+              <div className={styles.headerEventName}>{activeEvent.title}</div>
+              <div className={styles.headerEventDate}>{activeEvent.date}</div>
+            </div>
+          )}
+        </header>
+
+        {/* ─────────────── EVENT PICKER ─────────────── */}
+        {screen === 'EVENT_PICK' && (
+          <div className={styles.panel}>
+            <h1 className={styles.h1}>Select today&rsquo;s session</h1>
+            <p className={styles.lead}>
+              Pick the event this kiosk is for. The selection is saved on this device until you change it.
+            </p>
+            {events.length === 0 ? (
+              <div className={styles.errorBox}>
+                No recent events found. An admin needs to create an event in Manage Data first.
+              </div>
+            ) : (
+              <div className={styles.eventGrid}>
+                {events.map((e) => (
+                  <button key={e.id} className={styles.eventBtn} onClick={() => pickEvent(e)}>
+                    <div className={styles.eventBtnTitle}>{e.title}</div>
+                    <div className={styles.eventBtnMeta}>
+                      {e.date}{e.series ? ` · ${e.series}` : ''}
                     </div>
-
-                    <div className="w-full border-[3px] border-dashed border-slate-400 rounded-xl p-1 bg-white mb-6 relative">
-                        <canvas ref={canvasRef} className="w-full h-[320px] rounded-lg cursor-crosshair touch-none"></canvas>
-                        <div className="absolute bottom-4 left-4 text-slate-300 flex select-none pointer-events-none items-center font-bold text-2xl uppercase tracking-widest gap-4 px-4 h-full w-full justify-center rotate-[-10deg] opacity-20">
-                            SIGN HERE - X_________________________
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between w-full mt-4 flex-wrap gap-4">
-                        <button 
-                            type="button"
-                            onClick={() => sigPad.current?.clear()}
-                            className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-lg transition-colors"
-                        >
-                            Clear Signature Array
-                        </button>
-                        <div className="flex gap-4">
-                            <button 
-                                onClick={() => setScreen('HOME')}
-                                className="bg-transparent hover:bg-slate-100 text-slate-500 font-bold py-3 px-6 rounded-lg transition-colors border border-transparent hover:border-slate-300"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={submitSignature}
-                                className="bg-[#097C87] hover:bg-[#065e68] text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 active:scale-95 text-lg"
-                            >
-                                Submit Registration
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                  </button>
+                ))}
+              </div>
             )}
+          </div>
+        )}
 
-            {screen === 'THANK_YOU' && (
-                <div className="w-full max-w-lg text-center animate-in zoom-in duration-300 text-[#097C87]">
-                    <div className="text-8xl mb-6">✅</div>
-                    <h2 className="text-4xl font-black mb-4">Registration Locked!</h2>
-                    <p className="text-xl text-slate-600 font-medium">Thank you. Please pass the device to the next person.</p>
+        {/* ─────────────── NAME / AUTOCOMPLETE ─────────────── */}
+        {screen === 'NAME' && activeEvent && (
+          <div className={styles.panel}>
+            <h1 className={styles.h1}>Welcome</h1>
+            <p className={styles.lead}>Type your name to check in.</p>
+            <div className={styles.searchWrap}>
+              <input
+                className={styles.search}
+                placeholder="First or last name…"
+                value={searchName}
+                onChange={(e) => onSearchChange(e.target.value)}
+                autoComplete="off"
+                autoFocus
+              />
+              {autocomplete.length > 0 && (
+                <div className={styles.autocomplete}>
+                  {autocomplete.map((r) => (
+                    <div key={r.id} className={styles.autoItem} onClick={() => pickFaculty(r)}>
+                      <span>{r.name}</span>
+                      {r.dept && <span className={styles.deptTag}>{r.dept}</span>}
+                    </div>
+                  ))}
+                  {searchName.trim().length >= 3 && (
+                    <div className={styles.notInList}>
+                      Not in list?{' '}
+                      <button onClick={useTypedName}>Continue with &ldquo;{searchName.trim()}&rdquo;</button>
+                    </div>
+                  )}
                 </div>
-            )}
-            
+              )}
+            </div>
+            {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <button className={`${styles.btn} ${styles.btnGhost}`} onClick={exitKioskMode}>
+                Change event
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────── SIGNATURE ─────────────── */}
+        {screen === 'SIGNATURE' && activeEvent && (
+          <div className={styles.panel}>
+            <h1 className={styles.h1}>Confirm attendance</h1>
+            <p className={styles.lead}>
+              Signing in: <strong style={{ color: '#097C87' }}>{activeFacultyDisplay}</strong>
+            </p>
+            <div className={styles.sigBox}>
+              <canvas ref={canvasRef} className={styles.sigCanvas} />
+              <div className={`${styles.sigHint} ${hasSignature ? styles.hidden : ''}`}>
+                Sign here ✎
+              </div>
+            </div>
+            {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
+            <div className={styles.sigControls}>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => { sigPad.current?.clear(); setHasSignature(false); }}
+                disabled={submitting}
+              >
+                Clear signature
+              </button>
+              <div className={styles.sigControlsRight}>
+                <button
+                  className={`${styles.btn} ${styles.btnGhost}`}
+                  onClick={() => { setScreen('NAME'); setErrorMessage(null); }}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`${styles.btn} ${styles.btnPrimary}`}
+                  onClick={submit}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Submitting…' : 'Submit registration'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────── THANKS ─────────────── */}
+        {screen === 'THANKS' && (
+          <div className={`${styles.panel} ${styles.thanks}`}>
+            <div className={styles.thanksIcon}>✅</div>
+            <div className={styles.thanksTitle}>Registered!</div>
+            <div className={styles.thanksSub}>Thank you. Please pass the device to the next person.</div>
+          </div>
+        )}
+
+        <div className={styles.footer}>
+          {activeEvent && (
+            <a href="#" onClick={(e) => { e.preventDefault(); exitKioskMode(); }}>
+              Switch event
+            </a>
+          )}
         </div>
-    );
+      </div>
+    </div>
+  );
 }
