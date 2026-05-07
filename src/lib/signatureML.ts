@@ -145,3 +145,107 @@ export function bucketForScore(score: number): 'VERIFIED' | 'POSSIBLE_MATCH' | '
   if (score >= possibleMin) return 'POSSIBLE_MATCH';
   return 'SUSPICIOUS_MISMATCH';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Structural feature helpers — used to detect that a scribble has the wrong
+// shape, the wrong number of strokes, or the wrong amount of ink, even when
+// DTW alone would call it a match. Multiplicative penalties on top of the
+// DTW confidence give us a defense in depth that scribbles cannot fake.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Get bounding box width/height in raw (pre-normalization) coordinates.
+export function getBoundingBox(points: Point[]): { w: number; h: number } {
+  if (!points || points.length === 0) return { w: 0, h: 0 };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { w: Math.max(maxX - minX, 0), h: Math.max(maxY - minY, 0) };
+}
+
+// Total ink length, summed Euclidean per consecutive pair.
+export function getPathLength(points: Point[]): number {
+  let len = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    len += Math.sqrt(dx * dx + dy * dy);
+  }
+  return len;
+}
+
+// Number of pen-down strokes in the original (un-resampled) trace.
+export function getStrokeCount(trace: any[]): number {
+  return Array.isArray(trace) ? trace.length : 0;
+}
+
+// Penalty multiplier when two aspect ratios differ.
+// 1.0 when identical; 0.7 at 2× ratio; 0.4 at 4×; 0.1 at 8× (clamped).
+function logScaleRatio(a: number, b: number): number {
+  const lo = Math.max(Math.min(a, b), 1e-3);
+  const hi = Math.max(Math.max(a, b), 1e-3);
+  return Math.max(1, hi / lo);
+}
+export function aspectRatioPenalty(ar1: number, ar2: number): number {
+  const r = logScaleRatio(ar1, ar2);
+  // Default "log-decay" coefficient is tunable via env.
+  const k = parseFloat(
+    (typeof process !== 'undefined' && process.env?.SIGNATURE_AR_PENALTY_K) || '0.30'
+  );
+  return Math.max(0, 1 - (Number.isFinite(k) ? k : 0.30) * Math.log2(r));
+}
+
+// Penalty for differing stroke counts. Same person tends to lift the pen the
+// same number of times (give or take 1).
+export function strokeCountPenalty(s1: number, s2: number): number {
+  const diff = Math.abs(s1 - s2);
+  // Tunable: how harshly to punish stroke-count mismatch.
+  const slope = parseFloat(
+    (typeof process !== 'undefined' && process.env?.SIGNATURE_STROKE_PENALTY_K) || '0.18'
+  );
+  if (diff === 0) return 1.0;
+  if (diff === 1) return 0.85;
+  if (diff === 2) return 0.65;
+  return Math.max(0.3, 1 - diff * (Number.isFinite(slope) ? slope : 0.18));
+}
+
+// Penalty for differing total ink lengths.
+export function pathLengthPenalty(l1: number, l2: number): number {
+  const r = logScaleRatio(l1, l2);
+  const k = parseFloat(
+    (typeof process !== 'undefined' && process.env?.SIGNATURE_PATHLEN_PENALTY_K) || '0.25'
+  );
+  return Math.max(0.3, 1 - (Number.isFinite(k) ? k : 0.25) * Math.log2(r));
+}
+
+export interface CombinedScore {
+  /** Final score (0–100) — DTW confidence × all multiplicative penalties. */
+  score: number;
+  /** DTW-only confidence before any penalties were applied. */
+  dtwOnly: number;
+  arMul: number;
+  strokeMul: number;
+  pathMul: number;
+}
+
+// Combine DTW similarity with the structural penalties. Each penalty is in
+// [0..1] so the final score is bounded by dtwOnly. A genuine repeat where
+// every penalty is ~0.9 still surfaces ~70%+ from a 90% DTW base; a scribble
+// where penalties stack to 0.3 collapses to ~25% even with a high DTW.
+export function combinedConfidence(args: {
+  dtwCost: number;
+  numNodes: number;
+  ar1: number; ar2: number;
+  strokes1: number; strokes2: number;
+  pathLen1: number; pathLen2: number;
+}): CombinedScore {
+  const dtwOnly = calculateConfidence(args.dtwCost, args.numNodes);
+  const arMul     = aspectRatioPenalty(args.ar1, args.ar2);
+  const strokeMul = strokeCountPenalty(args.strokes1, args.strokes2);
+  const pathMul   = pathLengthPenalty(args.pathLen1, args.pathLen2);
+  const score     = Math.max(0, Number((dtwOnly * arMul * strokeMul * pathMul).toFixed(1)));
+  return { score, dtwOnly, arMul, strokeMul, pathMul };
+}

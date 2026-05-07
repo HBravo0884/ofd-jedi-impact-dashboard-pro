@@ -7,8 +7,11 @@ import {
   normalizePoints,
   resamplePoints,
   dynamicTimeWarping,
-  calculateConfidence,
   bucketForScore,
+  combinedConfidence,
+  getBoundingBox,
+  getPathLength,
+  getStrokeCount,
 } from '@/lib/signatureML';
 
 export const revalidate = 0;
@@ -57,24 +60,50 @@ export async function POST(req: Request) {
     });
   }
 
-  // Run DTW against every baseline sample; report per-sample + overall (best).
-  const currentPoints = resamplePoints(normalizePoints(extractPath(signatureTrace)), 50);
-  const perSample: Array<{ index: number; dtw: number; confidence: number }> = [];
-  let bestDtw = Infinity;
+  // Run DTW + structural penalties against every baseline sample;
+  // report the full per-sample breakdown so the demo UI can visualize
+  // how each penalty multiplier contributed.
+  const curRaw = extractPath(signatureTrace);
+  const curBB = getBoundingBox(curRaw);
+  const curStrokes = getStrokeCount(signatureTrace);
+  const curLen = getPathLength(curRaw);
+  const currentPoints = resamplePoints(normalizePoints(curRaw), 50);
+
+  const perSample: Array<{
+    index: number; dtw: number; confidence: number;
+    dtwOnly: number; arMul: number; strokeMul: number; pathMul: number;
+  }> = [];
+  let bestScore = 0;
   let bestIdx = -1;
   for (let i = 0; i < baseline.length; i++) {
     try {
-      const histPoints = resamplePoints(normalizePoints(extractPath(baseline[i])), 50);
+      const histRaw = extractPath(baseline[i]);
+      if (histRaw.length < 2) {
+        perSample.push({ index: i, dtw: Infinity, confidence: 0, dtwOnly: 0, arMul: 0, strokeMul: 0, pathMul: 0 });
+        continue;
+      }
+      const histBB = getBoundingBox(histRaw);
+      const histPoints = resamplePoints(normalizePoints(histRaw), 50);
       const dtw = dynamicTimeWarping(histPoints, currentPoints);
-      const confidence = calculateConfidence(dtw, 50);
-      perSample.push({ index: i, dtw, confidence });
-      if (dtw < bestDtw) { bestDtw = dtw; bestIdx = i; }
+      const c = combinedConfidence({
+        dtwCost: dtw, numNodes: 50,
+        ar1: (curBB.w  || 1) / (curBB.h  || 1),
+        ar2: (histBB.w || 1) / (histBB.h || 1),
+        strokes1: curStrokes, strokes2: getStrokeCount(baseline[i]),
+        pathLen1: curLen,    pathLen2: getPathLength(histRaw),
+      });
+      perSample.push({
+        index: i, dtw, confidence: c.score,
+        dtwOnly: c.dtwOnly, arMul: c.arMul, strokeMul: c.strokeMul, pathMul: c.pathMul,
+      });
+      if (c.score > bestScore) { bestScore = c.score; bestIdx = i; }
     } catch (e) {
-      perSample.push({ index: i, dtw: Infinity, confidence: 0 });
+      perSample.push({ index: i, dtw: Infinity, confidence: 0, dtwOnly: 0, arMul: 0, strokeMul: 0, pathMul: 0 });
     }
   }
 
-  const mlScore = bestIdx >= 0 ? calculateConfidence(bestDtw, 50) : 0;
+  const mlScore = bestScore;
+  const bestDtw = bestIdx >= 0 ? perSample[bestIdx].dtw : Infinity;
   const mlAction = bucketForScore(mlScore);
 
   return NextResponse.json({

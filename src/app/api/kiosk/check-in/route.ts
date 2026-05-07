@@ -5,8 +5,11 @@ import {
   normalizePoints,
   resamplePoints,
   dynamicTimeWarping,
-  calculateConfidence,
   bucketForScore,
+  combinedConfidence,
+  getBoundingBox,
+  getPathLength,
+  getStrokeCount,
 } from '@/lib/signatureML';
 import { isClinicianDegrees } from '@/lib/clinician';
 
@@ -106,18 +109,34 @@ export async function POST(req: Request) {
     let mlScore = -1;
     if (hasSignature) {
       try {
-        const currentPoints = resamplePoints(normalizePoints(extractPath(signatureTrace)), 50);
-        const historicalTraces = (faculty.signatureUrls || [])
+        const curRaw = extractPath(signatureTrace);
+        const curBB = getBoundingBox(curRaw);
+        const curStrokes = getStrokeCount(signatureTrace);
+        const curLen = getPathLength(curRaw);
+        const currentPoints = resamplePoints(normalizePoints(curRaw), 50);
+
+        const historicalTraces: any[] = (faculty.signatureUrls || [])
           .map((s: string) => { try { return JSON.parse(s); } catch { return null; } })
           .filter((x: any) => x);
+
         if (historicalTraces.length > 0) {
-          let bestDtw = Infinity;
+          let bestScore = 0;
           for (const hist of historicalTraces) {
-            const histPoints = resamplePoints(normalizePoints(extractPath(hist)), 50);
-            const score = dynamicTimeWarping(histPoints, currentPoints);
-            if (score < bestDtw) bestDtw = score;
+            const histRaw = extractPath(hist);
+            if (histRaw.length < 2) continue;
+            const histBB = getBoundingBox(histRaw);
+            const histPoints = resamplePoints(normalizePoints(histRaw), 50);
+            const dtw = dynamicTimeWarping(histPoints, currentPoints);
+            const cur = combinedConfidence({
+              dtwCost: dtw, numNodes: 50,
+              ar1: (curBB.w  || 1) / (curBB.h  || 1),
+              ar2: (histBB.w || 1) / (histBB.h || 1),
+              strokes1: curStrokes, strokes2: getStrokeCount(hist),
+              pathLen1: curLen,    pathLen2: getPathLength(histRaw),
+            });
+            if (cur.score > bestScore) bestScore = cur.score;
           }
-          mlScore = calculateConfidence(bestDtw, 50);
+          mlScore = bestScore;
         }
         // Append this trace to the faculty's history (capped to ~5KB per trace).
         await prisma.faculty.update({
