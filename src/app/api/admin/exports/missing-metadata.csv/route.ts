@@ -18,12 +18,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // "Missing metadata" = pending resolution OR explicitly bucketed as Other
+  // (the catch-all department in the schema enum). The DepartmentType enum
+  // does not have an 'Unknown' value — Other is what the schema uses.
   const rows = await prisma.faculty.findMany({
     where: {
       OR: [
         { status: 'PENDING_RESOLUTION' },
-        { department: { equals: 'Other' } },
-        { department: { equals: 'Unknown' } },
+        { department: 'Other' },
       ],
     },
     orderBy: { lastName: 'asc' },
