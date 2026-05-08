@@ -39,7 +39,8 @@ ChartJS.register(
 // Single source of truth lives in src/lib/canonicalPalette.ts so the legacy
 // HTML dashboard and the Next.js dashboard share the EXACT same colors for
 // the same dept name. 'OFD' / 'Office of Faculty Development' → slate grey.
-export { DEPT_PALETTE, getStringColor as colorForKey } from '@/lib/canonicalPalette';
+import { DEPT_PALETTE, getStringColor as colorForKey } from '@/lib/canonicalPalette';
+export { DEPT_PALETTE, colorForKey };
 export function withAlpha(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;
