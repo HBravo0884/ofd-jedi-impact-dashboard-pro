@@ -60,6 +60,49 @@ export default async function SigninSheetPage({
     if (r.signatureTrace) traceById.set(r.id, r.signatureTrace);
   }
 
+  // CME fields (added in supabase/2026-05-08_add_cme_event_fields.sql but
+  // not yet in the Prisma schema). Read via raw SQL with NULL fallback so
+  // events without these fields still render — placeholders show in red.
+  let cme: {
+    learningObjectives: string[];
+    disclosureReport: string | null;
+    planningCommittee: string | null;
+    acknowledgmentOfSupport: string | null;
+    eventTime: string | null;
+    location: string | null;
+    isGrandRounds: boolean;
+  } = {
+    learningObjectives: [],
+    disclosureReport: null,
+    planningCommittee: null,
+    acknowledgmentOfSupport: null,
+    eventTime: null,
+    location: null,
+    isGrandRounds: false,
+  };
+  try {
+    const cmeRows = (await prisma.$queryRawUnsafe(
+      `SELECT "learningObjectives", "disclosureReport", "planningCommittee",
+              "acknowledgmentOfSupport", "eventTime", "location", "isGrandRounds"
+         FROM "Event" WHERE id = $1 LIMIT 1`,
+      eventId
+    )) as any[];
+    if (cmeRows.length > 0) {
+      const r = cmeRows[0];
+      cme = {
+        learningObjectives: Array.isArray(r.learningObjectives) ? r.learningObjectives : [],
+        disclosureReport: r.disclosureReport ?? null,
+        planningCommittee: r.planningCommittee ?? null,
+        acknowledgmentOfSupport: r.acknowledgmentOfSupport ?? null,
+        eventTime: r.eventTime ?? null,
+        location: r.location ?? null,
+        isGrandRounds: r.isGrandRounds ?? false,
+      };
+    }
+  } catch {
+    // Migration not yet run — keep all fields null/empty, placeholders render.
+  }
+
   // Partition attendees into Clinical vs Non-Clinical for CME reporting.
   const clinicalAttendances: typeof event.attendances = [];
   const nonClinicalAttendances: typeof event.attendances = [];
@@ -130,7 +173,7 @@ export default async function SigninSheetPage({
             </div>
             <div className="cme-field">
               <span className="cme-label">
-                <input type="checkbox" disabled defaultChecked={false} />
+                <input type="checkbox" disabled defaultChecked={cme.isGrandRounds} />
                 Grand Rounds
               </span>
             </div>
@@ -142,11 +185,15 @@ export default async function SigninSheetPage({
           <div className="cme-form-row">
             <div className="cme-field">
               <span className="cme-label">Time:</span>
-              <span className="cme-placeholder">[set in Manage Events]</span>
+              {cme.eventTime
+                ? <span className="cme-value">{cme.eventTime}</span>
+                : <span className="cme-placeholder">[set in Manage Events]</span>}
             </div>
             <div className="cme-field">
               <span className="cme-label">Location:</span>
-              <span className="cme-placeholder">[set in Manage Events]</span>
+              {cme.location
+                ? <span className="cme-value">{cme.location}</span>
+                : <span className="cme-placeholder">[set in Manage Events]</span>}
             </div>
           </div>
           <div className="cme-form-row">
@@ -160,25 +207,37 @@ export default async function SigninSheetPage({
         {/* Learning Objectives */}
         <section className="cme-block">
           <h3 className="cme-block-heading">Learning Objectives</h3>
-          <ol className="cme-objectives">
-            <li className="cme-placeholder">[Objective 1 — set in Manage Events]</li>
-            <li className="cme-placeholder">[Objective 2 — set in Manage Events]</li>
-            <li className="cme-placeholder">[Objective 3 — set in Manage Events]</li>
-            <li className="cme-placeholder">[Objective 4 — set in Manage Events]</li>
-            <li className="cme-placeholder">[Objective 5 — set in Manage Events]</li>
-          </ol>
+          {cme.learningObjectives.filter((s) => s && s.trim()).length > 0 ? (
+            <ol className="cme-objectives">
+              {cme.learningObjectives
+                .filter((s) => s && s.trim())
+                .map((s, i) => <li key={i}>{s}</li>)}
+            </ol>
+          ) : (
+            <ol className="cme-objectives">
+              <li className="cme-placeholder">[Objective 1 — set in Manage Events]</li>
+              <li className="cme-placeholder">[Objective 2 — set in Manage Events]</li>
+              <li className="cme-placeholder">[Objective 3 — set in Manage Events]</li>
+              <li className="cme-placeholder">[Objective 4 — set in Manage Events]</li>
+              <li className="cme-placeholder">[Objective 5 — set in Manage Events]</li>
+            </ol>
+          )}
         </section>
 
         {/* Disclosure Report */}
         <section className="cme-block">
           <h3 className="cme-block-heading">Disclosure Report</h3>
-          <p className="cme-placeholder">
-            [Disclosure Report — set in Manage Events. Default per ACCME
-            Standards for Integrity and Independence in Accredited Continuing
-            Education: disclosure of relevant financial relationships from
-            speakers and planning committee members will be documented and
-            mitigated prior to this activity.]
-          </p>
+          {cme.disclosureReport ? (
+            <p>{cme.disclosureReport}</p>
+          ) : (
+            <p className="cme-placeholder">
+              [Disclosure Report — set in Manage Events. Default per ACCME
+              Standards for Integrity and Independence in Accredited Continuing
+              Education: disclosure of relevant financial relationships from
+              speakers and planning committee members will be documented and
+              mitigated prior to this activity.]
+            </p>
+          )}
         </section>
 
         {/* Speaker */}
@@ -194,10 +253,14 @@ export default async function SigninSheetPage({
         {/* Planning Committee */}
         <section className="cme-block">
           <h3 className="cme-block-heading">Planning Committee</h3>
-          <p className="cme-placeholder">
-            [Planning Committee — set in Manage Events. Default: Office of
-            Faculty Development &amp; JEDI committee members.]
-          </p>
+          {cme.planningCommittee ? (
+            <p>{cme.planningCommittee}</p>
+          ) : (
+            <p className="cme-placeholder">
+              [Planning Committee — set in Manage Events. Default: Office of
+              Faculty Development &amp; JEDI committee members.]
+            </p>
+          )}
         </section>
 
         {/* Conflict Resolution (boilerplate) */}
@@ -215,10 +278,14 @@ export default async function SigninSheetPage({
         {/* Acknowledgment of Support */}
         <section className="cme-block">
           <h3 className="cme-block-heading">Acknowledgment of Support</h3>
-          <p className="cme-placeholder">
-            [Acknowledgment of Support — set in Manage Events. Default: no
-            commercial support has been received for this activity.]
-          </p>
+          {cme.acknowledgmentOfSupport ? (
+            <p>{cme.acknowledgmentOfSupport}</p>
+          ) : (
+            <p className="cme-placeholder">
+              [Acknowledgment of Support — set in Manage Events. Default: no
+              commercial support has been received for this activity.]
+            </p>
+          )}
         </section>
 
         {/* Evaluation */}

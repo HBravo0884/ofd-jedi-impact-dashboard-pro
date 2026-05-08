@@ -13,6 +13,13 @@ interface EventRow {
   seriesId: string | null;
   seriesTitle: string | null;
   attendances: number;
+  learningObjectives?: string[];
+  disclosureReport?: string | null;
+  planningCommittee?: string | null;
+  acknowledgmentOfSupport?: string | null;
+  eventTime?: string | null;
+  location?: string | null;
+  isGrandRounds?: boolean;
 }
 interface Template {
   mostCommonDuration: number;
@@ -34,15 +41,27 @@ export default function ManageEventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Form state
+  // Create-form state
   const [seriesId, setSeriesId] = useState('');
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
   const [date, setDate] = useState(todayISO());
   const [baseDuration, setBaseDuration] = useState('60');
+  const [eventTime, setEventTime] = useState('');
+  const [location, setLocation] = useState('');
+  const [isGrandRounds, setIsGrandRounds] = useState(false);
+  const [learningObjectives, setLearningObjectives] = useState<string[]>(['', '', '', '', '']);
+  const [disclosureReport, setDisclosureReport] = useState('');
+  const [planningCommittee, setPlanningCommittee] = useState('');
+  const [acknowledgmentOfSupport, setAcknowledgmentOfSupport] = useState('');
+  const [showCmeFields, setShowCmeFields] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Template-driven autopopulation
+  // Edit modal state
+  const [editing, setEditing] = useState<EventRow | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Template autopopulation
   const [template, setTemplate] = useState<Template | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -51,7 +70,6 @@ export default function ManageEventsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // ── Initial load ───────────────────────────────────────────────────────
   const reload = async () => {
     setLoading(true);
     try {
@@ -67,7 +85,6 @@ export default function ManageEventsPage() {
   };
   useEffect(() => { reload(); }, []);
 
-  // ── Autopopulate form when a series is picked ─────────────────────────
   useEffect(() => {
     setTemplate(null);
     setAutoFilled(false);
@@ -80,7 +97,6 @@ export default function ManageEventsPage() {
         const j = await r.json();
         if (j.template) {
           setTemplate(j.template);
-          // Only autofill blank fields. Don't clobber what the user typed.
           if (!title) setTitle(j.template.lastTitle);
           if (!topic) setTopic(j.template.lastTopic);
           if (!baseDuration || baseDuration === '60') setBaseDuration(String(j.template.mostCommonDuration));
@@ -108,15 +124,34 @@ export default function ManageEventsPage() {
           date,
           baseDuration: parseInt(baseDuration, 10) || 60,
           seriesId: seriesId || null,
+          // CME fields — only sent if the toggle was opened
+          ...(showCmeFields
+            ? {
+                eventTime: eventTime.trim() || null,
+                location: location.trim() || null,
+                isGrandRounds,
+                learningObjectives: learningObjectives.map((s) => s.trim()).filter(Boolean),
+                disclosureReport: disclosureReport.trim() || null,
+                planningCommittee: planningCommittee.trim() || null,
+                acknowledgmentOfSupport: acknowledgmentOfSupport.trim() || null,
+              }
+            : {}),
         }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setSuccess(`Created "${j.event.title}" — it's now selectable on the kiosk.`);
-      // Reset form for fast next entry; keep series + duration sticky.
+      // Reset form
       setTitle('');
       setTopic('');
       setDate(todayISO());
+      setEventTime('');
+      setLocation('');
+      setIsGrandRounds(false);
+      setLearningObjectives(['', '', '', '', '']);
+      setDisclosureReport('');
+      setPlanningCommittee('');
+      setAcknowledgmentOfSupport('');
       reload();
     } catch (err: any) {
       setErrorMessage(err?.message || 'Could not create event.');
@@ -131,7 +166,6 @@ export default function ManageEventsPage() {
       ? `"${ev.title}" has ${ev.attendances} attendance records. Delete event AND all attendances?`
       : `Delete "${ev.title}"?`;
     if (!confirm(confirmMsg)) return;
-
     const url = `/api/admin/events?id=${encodeURIComponent(ev.id)}${force ? '&force=1' : ''}`;
     const r = await fetch(url, { method: 'DELETE' });
     if (!r.ok) {
@@ -140,6 +174,39 @@ export default function ManageEventsPage() {
       return;
     }
     reload();
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      const r = await fetch(`/api/admin/events?id=${encodeURIComponent(editing.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editing.title,
+          topic: editing.topic,
+          date: editing.date,
+          baseDuration: editing.baseDuration,
+          seriesId: editing.seriesId,
+          eventTime: editing.eventTime ?? null,
+          location: editing.location ?? null,
+          isGrandRounds: !!editing.isGrandRounds,
+          learningObjectives: (editing.learningObjectives ?? []).filter(Boolean),
+          disclosureReport: editing.disclosureReport ?? null,
+          planningCommittee: editing.planningCommittee ?? null,
+          acknowledgmentOfSupport: editing.acknowledgmentOfSupport ?? null,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      setEditing(null);
+      reload();
+    } catch (err: any) {
+      alert('Save failed: ' + (err?.message || 'unknown error'));
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   return (
@@ -161,6 +228,7 @@ export default function ManageEventsPage() {
       <p style={{ color: 'var(--muted)', marginBottom: 22, fontSize: '0.92rem' }}>
         Create an event before its session starts so attendees can check in via the kiosk.
         Selecting a series autopopulates the form from the most recent past event in that series.
+        Click any row below to edit CME fields (Learning Objectives, Disclosure Report, etc.).
       </p>
 
       {/* ── CREATE FORM ───────────────────────────────────────────────── */}
@@ -185,38 +253,20 @@ export default function ManageEventsPage() {
                 <option key={s.id} value={s.id}>{s.title}</option>
               ))}
             </select>
-            {templateLoading && (
-              <div style={hintStyle}>Looking up past events in this series…</div>
-            )}
+            {templateLoading && <div style={hintStyle}>Looking up past events in this series…</div>}
             {template && autoFilled && (
               <div style={{ ...hintStyle, color: '#047857', fontWeight: 600 }}>
                 ✨ Autofilled from {template.pastCount} past event{template.pastCount === 1 ? '' : 's'} in this series.
               </div>
             )}
           </div>
-
           <div>
             <label style={labelStyle}>Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={inputStyle}
-              required
-            />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} required />
           </div>
-
           <div style={{ maxWidth: 160 }}>
             <label style={labelStyle}>Duration (min)</label>
-            <input
-              type="number"
-              min={5}
-              max={600}
-              value={baseDuration}
-              onChange={(e) => setBaseDuration(e.target.value)}
-              style={inputStyle}
-              required
-            />
+            <input type="number" min={5} max={600} value={baseDuration} onChange={(e) => setBaseDuration(e.target.value)} style={inputStyle} required />
           </div>
         </div>
 
@@ -225,59 +275,96 @@ export default function ManageEventsPage() {
             Title <span style={{ color: '#9ca3af', fontWeight: 400, textTransform: 'none' }}>(what the kiosk shows)</span>
           </label>
           <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            type="text" value={title} onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Faculty Workshop: Promotion & Tenure"
-            style={inputStyle}
-            required
-            list="title-suggestions"
+            style={inputStyle} required list="title-suggestions"
           />
           {template && template.sampleTitles.length > 0 && (
             <datalist id="title-suggestions">
               {template.sampleTitles.map((t) => <option key={t} value={t} />)}
             </datalist>
           )}
-          {template && template.sampleTitles.length > 1 && (
-            <div style={hintStyle}>
-              Recent in this series:{' '}
-              {template.sampleTitles.slice(0, 3).map((t, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setTitle(t)}
-                  style={chipStyle}
-                  title="Click to use this title"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         <div style={{ marginTop: 14 }}>
           <label style={labelStyle}>Topic <span style={{ color: '#9ca3af', fontWeight: 400, textTransform: 'none' }}>(optional)</span></label>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Putting your case together"
-            style={inputStyle}
-          />
+          <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} style={inputStyle} placeholder="e.g. Putting your case together" />
         </div>
 
-        {errorMessage && (
-          <div style={errorBox}>{errorMessage}</div>
-        )}
-        {success && (
-          <div style={successBox}>{success}</div>
-        )}
+        {/* CME fields toggle */}
+        <div style={{ marginTop: 18, padding: '12px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <button
+            type="button"
+            onClick={() => setShowCmeFields(!showCmeFields)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--c1d)', fontWeight: 700, cursor: 'pointer', fontSize: '0.92rem', padding: 0 }}
+          >
+            {showCmeFields ? '▾' : '▸'} HU CME form fields {showCmeFields ? '' : '(optional — Learning Objectives, Disclosure, etc.)'}
+          </button>
+
+          {showCmeFields && (
+            <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Time</label>
+                  <input type="text" value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="e.g. 12:00pm – 1:00pm" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Location</label>
+                  <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Cancer Center Auditorium" style={inputStyle} />
+                </div>
+                <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'none', letterSpacing: 0, fontSize: '0.92rem' }}>
+                  <input type="checkbox" checked={isGrandRounds} onChange={(e) => setIsGrandRounds(e.target.checked)} />
+                  Grand Rounds
+                </label>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Learning Objectives (1 per line)</label>
+                {learningObjectives.map((obj, i) => (
+                  <input
+                    key={i}
+                    type="text"
+                    value={obj}
+                    onChange={(e) => {
+                      const next = [...learningObjectives];
+                      next[i] = e.target.value;
+                      setLearningObjectives(next);
+                    }}
+                    placeholder={`Objective ${i + 1}`}
+                    style={{ ...inputStyle, marginBottom: 6 }}
+                  />
+                ))}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Disclosure Report</label>
+                <textarea value={disclosureReport} onChange={(e) => setDisclosureReport(e.target.value)} style={{ ...inputStyle, minHeight: 70, fontFamily: 'inherit' }} placeholder="Speakers and planners disclose…" />
+              </div>
+              <div>
+                <label style={labelStyle}>Planning Committee</label>
+                <textarea value={planningCommittee} onChange={(e) => setPlanningCommittee(e.target.value)} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} placeholder="Names of committee members" />
+              </div>
+              <div>
+                <label style={labelStyle}>Acknowledgment of Support</label>
+                <textarea value={acknowledgmentOfSupport} onChange={(e) => setAcknowledgmentOfSupport(e.target.value)} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} placeholder="Sponsorship, grants, etc." />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {errorMessage && <div style={errorBox}>{errorMessage}</div>}
+        {success && <div style={successBox}>{success}</div>}
 
         <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button
             type="button"
-            onClick={() => { setTitle(''); setTopic(''); setSeriesId(''); setDate(todayISO()); setBaseDuration('60'); setTemplate(null); setAutoFilled(false); }}
+            onClick={() => {
+              setTitle(''); setTopic(''); setSeriesId(''); setDate(todayISO()); setBaseDuration('60');
+              setTemplate(null); setAutoFilled(false);
+              setEventTime(''); setLocation(''); setIsGrandRounds(false);
+              setLearningObjectives(['', '', '', '', '']);
+              setDisclosureReport(''); setPlanningCommittee(''); setAcknowledgmentOfSupport('');
+            }}
             style={{ ...btnStyle, background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)' }}
           >
             Clear
@@ -312,7 +399,7 @@ export default function ManageEventsPage() {
                 <th style={th}>Title</th>
                 <th style={th}>Topic</th>
                 <th style={{ ...th, textAlign: 'right' }}>Attendances</th>
-                <th style={{ ...th, width: 80 }}></th>
+                <th style={{ ...th, width: 130 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -325,7 +412,14 @@ export default function ManageEventsPage() {
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: e.attendances > 0 ? 'var(--c1)' : 'var(--muted)' }}>
                     {e.attendances}
                   </td>
-                  <td style={{ ...td, textAlign: 'right' }}>
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button
+                      onClick={() => setEditing({ ...e, learningObjectives: [...(e.learningObjectives || []), '', '', '', '', ''].slice(0, 5) })}
+                      style={{ background: 'transparent', border: '1px solid var(--c1d)', color: 'var(--c1d)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, padding: '4px 10px', borderRadius: 4, marginRight: 6 }}
+                      title="Edit event including HU CME fields"
+                    >
+                      Edit
+                    </button>
                     <button
                       onClick={() => handleDelete(e)}
                       style={{ background: 'transparent', border: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
@@ -340,6 +434,110 @@ export default function ManageEventsPage() {
           </table>
         </div>
       )}
+
+      {/* ── EDIT MODAL ─────────────────────────────────────────────── */}
+      {editing && (
+        <div
+          onClick={() => !savingEdit && setEditing(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(13, 46, 50, 0.55)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            padding: '40px 16px', zIndex: 50, overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: 12, padding: 24, maxWidth: 720, width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontFamily: '"Garamond", serif' }}>Edit event</h3>
+              <button onClick={() => !savingEdit && setEditing(null)} style={{ background: 'transparent', border: 'none', fontSize: '1.4rem', color: 'var(--muted)', cursor: 'pointer', padding: 0 }}>
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Title</label>
+                <input type="text" value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Date</label>
+                  <input type="date" value={editing.date} onChange={(e) => setEditing({ ...editing, date: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Duration (min)</label>
+                  <input type="number" value={editing.baseDuration} onChange={(e) => setEditing({ ...editing, baseDuration: parseInt(e.target.value, 10) || 60 })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Time</label>
+                  <input type="text" value={editing.eventTime ?? ''} onChange={(e) => setEditing({ ...editing, eventTime: e.target.value })} placeholder="e.g. 12:00pm – 1:00pm" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Location</label>
+                  <input type="text" value={editing.location ?? ''} onChange={(e) => setEditing({ ...editing, location: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Topic</label>
+                <input type="text" value={editing.topic ?? ''} onChange={(e) => setEditing({ ...editing, topic: e.target.value })} style={inputStyle} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!editing.isGrandRounds} onChange={(e) => setEditing({ ...editing, isGrandRounds: e.target.checked })} />
+                Grand Rounds
+              </label>
+
+              <div>
+                <label style={labelStyle}>Learning Objectives (1 per line)</label>
+                {[0, 1, 2, 3, 4].map((i) => {
+                  const list = editing.learningObjectives ?? [];
+                  return (
+                    <input
+                      key={i}
+                      type="text"
+                      value={list[i] ?? ''}
+                      onChange={(e) => {
+                        const next = [...list];
+                        while (next.length < 5) next.push('');
+                        next[i] = e.target.value;
+                        setEditing({ ...editing, learningObjectives: next });
+                      }}
+                      placeholder={`Objective ${i + 1}`}
+                      style={{ ...inputStyle, marginBottom: 6 }}
+                    />
+                  );
+                })}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Disclosure Report</label>
+                <textarea value={editing.disclosureReport ?? ''} onChange={(e) => setEditing({ ...editing, disclosureReport: e.target.value })} style={{ ...inputStyle, minHeight: 70, fontFamily: 'inherit' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Planning Committee</label>
+                <textarea value={editing.planningCommittee ?? ''} onChange={(e) => setEditing({ ...editing, planningCommittee: e.target.value })} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Acknowledgment of Support</label>
+                <textarea value={editing.acknowledgmentOfSupport ?? ''} onChange={(e) => setEditing({ ...editing, acknowledgmentOfSupport: e.target.value })} style={{ ...inputStyle, minHeight: 60, fontFamily: 'inherit' }} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 18, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditing(null)} disabled={savingEdit} style={{ ...btnStyle, background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={savingEdit} style={{ ...btnStyle, background: savingEdit ? '#999' : 'var(--c3d)', color: 'white' }}>
+                {savingEdit ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -352,14 +550,7 @@ const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
   borderRadius: 6, fontSize: '0.95rem', fontFamily: 'inherit', background: 'white',
 };
-const hintStyle: React.CSSProperties = {
-  fontSize: '0.78rem', color: 'var(--muted)', marginTop: 6,
-};
-const chipStyle: React.CSSProperties = {
-  margin: '0 4px 0 0', padding: '3px 10px', background: '#e0f2f1', color: '#065e68',
-  border: '1px solid #cdebee', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600,
-  cursor: 'pointer', font: 'inherit',
-};
+const hintStyle: React.CSSProperties = { fontSize: '0.78rem', color: 'var(--muted)', marginTop: 6 };
 const btnStyle: React.CSSProperties = {
   padding: '10px 20px', borderRadius: 6, fontWeight: 700, fontSize: '0.92rem',
   cursor: 'pointer', border: 'none', fontFamily: 'inherit',
