@@ -18,6 +18,12 @@ export type KioskConfig = {
   SIGNATURE_AR_PENALTY_K?: number;
   SIGNATURE_STROKE_PENALTY_K?: number;
   SIGNATURE_PATHLEN_PENALTY_K?: number;
+
+  // Trainer Test Mode behavior
+  // When true (default), a test that scores VERIFIED (≥ SIGNATURE_VERIFIED_MIN)
+  // automatically appends the current trace to the faculty's baseline so good
+  // signatures during a CME demo also serve as additional training data.
+  SIGNATURE_TEST_AUTO_ENROLL_VERIFIED?: boolean;
 };
 
 const TTL_MS = 30 * 1000;

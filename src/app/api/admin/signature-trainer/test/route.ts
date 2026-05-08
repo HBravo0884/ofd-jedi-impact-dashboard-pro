@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { ADMIN_COOKIE_NAME, verifyAdmin } from '@/lib/adminAuth';
 import { prisma } from '@/lib/prisma';
-import { priming as primeKioskSettings } from '@/lib/kioskSettings';
+import { getKioskConfig, priming as primeKioskSettings } from '@/lib/kioskSettings';
 import {
   extractPath,
   normalizePoints,
@@ -108,6 +108,52 @@ export async function POST(req: Request) {
   const bestDtw = bestIdx >= 0 ? perSample[bestIdx].dtw : Infinity;
   const mlAction = bucketForScore(mlScore);
 
+  // ── Optional: auto-enroll a VERIFIED-scored test trace into the baseline.
+  // The setting defaults to ON (true) but admins can flip it off in
+  // Settings → Trainer test-mode auto-enroll. This lets a CME demo session
+  // double as bonus training data without manually re-running TRAIN mode.
+  let addedToBaseline = false;
+  let newBaselineCount = baseline.length;
+  if (mlAction === 'VERIFIED') {
+    const cfg = await getKioskConfig();
+    const enabled = cfg.SIGNATURE_TEST_AUTO_ENROLL_VERIFIED !== false; // default ON
+    if (enabled) {
+      try {
+        // Down-sample the trace to fit comfortably under the per-row limit
+        // and avoid the JSON-truncation bug we fixed earlier (keep < 12 KB).
+        let serialized = JSON.stringify(signatureTrace);
+        if (serialized.length > 12000) {
+          // Crude but safe down-sample: keep every Nth point per stroke until
+          // it fits. signature_pad's toData() returns Array<{ points: [...] }>.
+          const traceCopy = (signatureTrace as any[]).map((stroke: any) => ({
+            ...stroke,
+            points: Array.isArray(stroke?.points) ? [...stroke.points] : [],
+          }));
+          let step = 2;
+          while (serialized.length > 12000 && step <= 16) {
+            for (const stroke of traceCopy) {
+              stroke.points = (stroke.points || []).filter(
+                (_: any, i: number) => i % step === 0
+              );
+            }
+            serialized = JSON.stringify(traceCopy);
+            step += 1;
+          }
+        }
+        if (serialized.length <= 12000) {
+          await prisma.faculty.update({
+            where: { id: f.id },
+            data: { signatureUrls: { push: serialized } },
+          });
+          addedToBaseline = true;
+          newBaselineCount = baseline.length + 1;
+        }
+      } catch (err) {
+        console.warn('[trainer/test] auto-enroll failed:', (err as any)?.message);
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     hasBaseline: true,
@@ -118,5 +164,7 @@ export async function POST(req: Request) {
     bestSampleIndex: bestIdx,
     bestDtw,
     perSample,
+    addedToBaseline,
+    newBaselineCount,
   });
 }

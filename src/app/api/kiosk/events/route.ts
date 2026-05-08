@@ -5,21 +5,22 @@ export const revalidate = 0;
 
 // PUBLIC — used by the iPad kiosk (no admin cookie required since the kiosk
 // is meant to be left open for attendees). Returns events that are eligible
-// for check-in: today, the past 14 days, and the next 14 days.
+// for check-in.
 //
-// We deliberately do NOT return future events further out, so a kiosk left
-// on a desk can't be used to leak the upcoming program calendar.
+// Window: -90 days to +60 days. Wide enough that admins don't have to
+// re-create events for the kiosk; the full event roster auto-populates here.
+// Capped at 200 rows so pathological histories don't blow up the kiosk.
 export async function GET() {
   const now = new Date();
-  const fourteenDays = 14 * 24 * 60 * 60 * 1000;
-  const lo = new Date(now.getTime() - fourteenDays);
-  const hi = new Date(now.getTime() + fourteenDays);
+  const day = 24 * 60 * 60 * 1000;
+  const lo = new Date(now.getTime() - 90 * day);
+  const hi = new Date(now.getTime() + 60 * day);
 
   const events = await prisma.event.findMany({
     where: { date: { gte: lo, lte: hi } },
     orderBy: { date: 'desc' },
     include: { series: { select: { title: true } } },
-    take: 60,
+    take: 200,
   });
 
   return NextResponse.json({
