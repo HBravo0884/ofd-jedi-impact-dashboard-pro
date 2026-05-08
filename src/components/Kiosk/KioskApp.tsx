@@ -4,16 +4,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import SignaturePad from 'signature_pad';
 import styles from './Kiosk.module.css';
 
-type Screen = 'EVENT_PICK' | 'NAME' | 'SIGNATURE' | 'THANKS';
+type Screen = 'SERIES_PICK' | 'EVENT_PICK' | 'NAME' | 'SIGNATURE' | 'THANKS';
 interface KioskEvent { id: string; title: string; date: string; series: string | null; }
 interface AutoResult { id: string; name: string; dept: string; isClinician: boolean; signatureBaselineCount: number; }
 
 const SESSION_KEY = 'hucm_kiosk_active_event_v1';
 
 export default function KioskApp() {
-  const [screen, setScreen] = useState<Screen>('EVENT_PICK');
+  const [screen, setScreen] = useState<Screen>('SERIES_PICK');
   const [events, setEvents] = useState<KioskEvent[]>([]);
   const [activeEvent, setActiveEvent] = useState<KioskEvent | null>(null);
+  // When the user taps a series tile, we filter the EVENT_PICK list to that
+  // series. null = "All sessions" (the older flat list, kept as a fallback).
+  const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
 
   const [searchName, setSearchName] = useState('');
   const [autocomplete, setAutocomplete] = useState<AutoResult[]>([]);
@@ -124,7 +127,8 @@ export default function KioskApp() {
     setSearchName('');
     setAutocomplete([]);
     setActiveFacultyId(null);
-    setScreen('EVENT_PICK');
+    setSelectedSeries(null);
+    setScreen('SERIES_PICK');
   };
 
   // ── Pick a faculty from autocomplete ─────────────────────────────────────
@@ -248,29 +252,109 @@ export default function KioskApp() {
           )}
         </header>
 
-        {/* ─────────────── EVENT PICKER ─────────────── */}
-        {screen === 'EVENT_PICK' && (
+        {/* ─────────────── SERIES PICKER (Step 1) ─────────────── */}
+        {screen === 'SERIES_PICK' && (
           <div className={styles.panel}>
-            <h1 className={styles.h1}>Select today&rsquo;s session</h1>
+            <h1 className={styles.h1}>Which series?</h1>
             <p className={styles.lead}>
-              Pick the event this kiosk is for. The selection is saved on this device until you change it.
+              Tap the series this session belongs to. You'll pick the specific event next.
             </p>
             {events.length === 0 ? (
               <div className={styles.errorBox}>
                 No recent events found. An admin needs to create an event in Manage Data first.
               </div>
-            ) : (
-              <div className={styles.eventGrid}>
-                {events.map((e) => (
-                  <button key={e.id} className={styles.eventBtn} onClick={() => pickEvent(e)}>
-                    <div className={styles.eventBtnTitle}>{e.title}</div>
+            ) : (() => {
+              // Group events by series → one tile per unique series, with
+              // a count of upcoming/recent events. Events without a series
+              // get bucketed under 'Other'.
+              const groups = new Map<string, number>();
+              for (const e of events) {
+                const key = e.series || 'Other';
+                groups.set(key, (groups.get(key) || 0) + 1);
+              }
+              const sorted = Array.from(groups.entries()).sort((a, b) => {
+                if (a[0] === 'Other') return 1;
+                if (b[0] === 'Other') return -1;
+                return a[0].localeCompare(b[0]);
+              });
+              return (
+                <div className={styles.eventGrid}>
+                  {sorted.map(([series, count]) => (
+                    <button
+                      key={series}
+                      className={styles.eventBtn}
+                      onClick={() => {
+                        setSelectedSeries(series === 'Other' ? null : series);
+                        setScreen('EVENT_PICK');
+                      }}
+                      title={`${count} event${count === 1 ? '' : 's'} in this series`}
+                    >
+                      <div className={styles.eventBtnTitle}>{series}</div>
+                      <div className={styles.eventBtnMeta}>
+                        {count} session{count === 1 ? '' : 's'}
+                      </div>
+                    </button>
+                  ))}
+                  {/* All-sessions fallback for admins / unusual cases */}
+                  <button
+                    key="__ALL__"
+                    className={styles.eventBtn}
+                    onClick={() => { setSelectedSeries(null); setScreen('EVENT_PICK'); }}
+                    title="Show every event regardless of series"
+                  >
+                    <div className={styles.eventBtnTitle}>All sessions</div>
                     <div className={styles.eventBtnMeta}>
-                      {e.date}{e.series ? ` · ${e.series}` : ''}
+                      {events.length} total
                     </div>
                   </button>
-                ))}
-              </div>
-            )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ─────────────── EVENT PICKER (Step 2) ─────────────── */}
+        {screen === 'EVENT_PICK' && (
+          <div className={styles.panel}>
+            <h1 className={styles.h1}>
+              {selectedSeries ? selectedSeries : 'All sessions'}
+            </h1>
+            <p className={styles.lead}>
+              Pick the event this kiosk is for. The selection is saved on this device until you change it.
+            </p>
+            {(() => {
+              const filtered = selectedSeries
+                ? events.filter((e) => (e.series || '') === selectedSeries)
+                : events;
+              if (filtered.length === 0) {
+                return (
+                  <div className={styles.errorBox}>
+                    No events found in this series.
+                  </div>
+                );
+              }
+              return (
+                <div className={styles.eventGrid}>
+                  {filtered.map((e) => (
+                    <button key={e.id} className={styles.eventBtn} onClick={() => pickEvent(e)}>
+                      <div className={styles.eventBtnTitle}>{e.title}</div>
+                      <div className={styles.eventBtnMeta}>
+                        {e.date}{e.series ? ` · ${e.series}` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <button
+                className={`${styles.btn} ${styles.btnGhost}`}
+                onClick={() => { setSelectedSeries(null); setScreen('SERIES_PICK'); }}
+                title="Go back to the series picker"
+              >
+                ← Back to series
+              </button>
+            </div>
           </div>
         )}
 

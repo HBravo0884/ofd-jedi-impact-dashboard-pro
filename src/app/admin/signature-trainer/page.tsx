@@ -17,6 +17,8 @@ interface TestResult {
     index: number; dtw: number; confidence: number;
     dtwOnly?: number; arMul?: number; strokeMul?: number; pathMul?: number;
   }>;
+  addedToBaseline?: boolean;
+  newBaselineCount?: number;
 }
 interface FacultyRow {
   id: string;
@@ -179,6 +181,16 @@ export default function SignatureTrainerPage() {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setTestResult(j as TestResult);
+      // If the server auto-enrolled this trace, reflect the new count locally
+      // so the "X samples on file" hint stays accurate without a page reload.
+      if (j?.addedToBaseline && active && typeof j.newBaselineCount === 'number') {
+        setActive({ ...active, baselineCount: j.newBaselineCount });
+        setFaculty((rows) =>
+          rows.map((r) =>
+            r.id === active.id ? { ...r, baselineCount: j.newBaselineCount } : r
+          )
+        );
+      }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Scoring failed.');
     } finally {
@@ -482,6 +494,27 @@ function TestResultPanel({ result }: { result: TestResult }) {
           best of {result.baselineCount} baseline sample{result.baselineCount === 1 ? '' : 's'}
         </div>
       </div>
+
+      {result.addedToBaseline && (
+        <div
+          title="This signature scored VERIFIED, so the system also added it to this faculty member's baseline. Disable in Settings."
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            marginTop: 10,
+            padding: '4px 10px',
+            background: 'rgba(255,255,255,0.6)',
+            border: `1px solid ${palette.bar}`,
+            borderRadius: 999,
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            color: palette.fg,
+          }}
+        >
+          ✨ Added to baseline ({result.newBaselineCount} on file)
+        </div>
+      )}
 
       {/* Confidence gauge */}
       <div style={{ position: 'relative', height: 10, background: '#e2e8f0', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
