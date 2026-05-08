@@ -301,7 +301,7 @@ export function eventGroupToIngestPayload(
   eventDate: string;
   baseDuration: number;
   seriesId?: string;
-  attendees: Array<{ name: string; email: string; duration: string }>;
+  attendees: Array<{ name: string; email: string; duration: number }>;
 } {
   return {
     eventTitle: g.topic,
@@ -311,7 +311,7 @@ export function eventGroupToIngestPayload(
     attendees: g.attendees.map((a) => ({
       name: a.rawName,         // pass raw — backend's heuristics strip "(Host)" etc.
       email: a.email,
-      duration: String(a.duration),
+      duration: a.duration,    // number — backend coerces defensively, Prisma needs Int
     })),
   };
 }

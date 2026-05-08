@@ -103,7 +103,15 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const inferred = extractCanonicalIdentity(person.name, person.email, person.duration);
+      // Coerce duration to number defensively — older callers (or buggy
+      // future ones) might send a string, which Prisma now rejects with
+      // 'Argument durationJoined: Expected Int, provided String'.
+      const durationNum = Number(person.duration);
+      const inferred = extractCanonicalIdentity(
+        person.name,
+        person.email,
+        Number.isFinite(durationNum) ? durationNum : 0
+      );
 
       // Micro-session filter: < 10 minutes is a flyby, drop it.
       if (inferred.duration < 10) {
@@ -204,10 +212,11 @@ export async function POST(request: Request) {
 
       // Bind attendance — schema unique constraint on (facultyId, eventId)
       // means we never double-count even on a retry.
+      const durationInt = Number(inferred.duration) || 0;
       await prisma.attendance.upsert({
         where: { facultyId_eventId: { facultyId, eventId: event.id } },
-        update: { durationJoined: inferred.duration },
-        create: { facultyId, eventId: event.id, durationJoined: inferred.duration },
+        update: { durationJoined: durationInt },
+        create: { facultyId, eventId: event.id, durationJoined: durationInt },
       });
 
       recordsWritten++;
