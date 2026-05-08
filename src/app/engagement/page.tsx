@@ -1,9 +1,10 @@
 import {
-  BubbleChart,
   BarChart,
   ScatterChart,
   DoughnutChart,
 } from '@/components/DashboardChart/DashboardChart';
+import { DeptBreadthVsDepthChart } from '@/components/DeptBreadthVsDepthChart';
+import { TOOLTIPS } from '@/lib/tooltipCopy';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 
@@ -34,7 +35,14 @@ function humanize(s: string | null | undefined): string {
 }
 
 export default async function EngagementPage() {
-  let bubblePoints: any[] = [];
+  // attendanceRows is the input shape that DeptBreadthVsDepthChart expects:
+  // one row per attendance event, each carrying the faculty's department.
+  // The chart aggregates these internally into per-department breadth/depth.
+  let attendanceRows: Array<{
+    facultyId: string;
+    facultyName: string;
+    primaryDept: string;
+  }> = [];
   let rankLabels: string[] = [];
   let rankCounts: number[] = [];
   let scatterPoints: any[] = [];
@@ -62,21 +70,19 @@ export default async function EngagementPage() {
       const atnd = fac.attendances?.length ?? 0;
       if (atnd === 0) continue;
 
-      // Bubble chart: one bubble per faculty. r scales sqrt(atnd) so a
-      // 50-session person doesn't get an 80-px bubble that overflows.
-      const hash =
-        fac.id.charCodeAt(0) + fac.id.charCodeAt(fac.id.length - 1);
-      const yJitter = (hash % 100) / 5;
-      const radius = Math.min(28, 4 + Math.sqrt(atnd) * 4);
       const deptHumanized = humanize(fac.department);
+      const fullName = `${fac.firstName} ${fac.lastName}`;
 
-      bubblePoints.push({
-        x: atnd,
-        y: yJitter,
-        r: radius,
-        name: `${fac.firstName} ${fac.lastName}`,
-        dept: deptHumanized,
-      });
+      // Emit one row per attendance for the dept-aggregated bubble chart.
+      // The chart will collapse these into department-level breadth (unique
+      // people) and depth (avg sessions per person) on its own.
+      for (let i = 0; i < atnd; i++) {
+        attendanceRows.push({
+          facultyId: fac.id,
+          facultyName: fullName,
+          primaryDept: deptHumanized,
+        });
+      }
 
       // Scatter chart: x = sessions attended, y = distinct series engaged
       const distinctSeries = new Set(
@@ -88,7 +94,7 @@ export default async function EngagementPage() {
       scatterPoints.push({
         x: atnd,
         y: distinctSeries.size,
-        name: `${fac.firstName} ${fac.lastName}`,
+        name: fullName,
         group: humanize(fac.rank),
       });
 
@@ -119,6 +125,7 @@ export default async function EngagementPage() {
         <Link
           href="/"
           style={{ color: 'var(--c5)', textDecoration: 'none', fontWeight: 'bold' }}
+          title={TOOLTIPS.publicNav.engagement}
         >
           ← Back to Master Overview
         </Link>
@@ -127,7 +134,7 @@ export default async function EngagementPage() {
       <div className="sec">Faculty Tracking & Engagement Depth</div>
 
       <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
-        <BubbleChart points={bubblePoints} />
+        <DeptBreadthVsDepthChart attendances={attendanceRows} />
       </div>
 
       <div className="charts-grid">
