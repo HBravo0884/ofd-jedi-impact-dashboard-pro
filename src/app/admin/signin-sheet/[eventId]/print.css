@@ -228,3 +228,207 @@
 @media print {
   .group-header { page-break-after: avoid; }
 }
+
+
+/* ── HU CME OFFICIAL FORM STYLES ──────────────────────────────────────── */
+.cme-form {
+  border: 2px solid #0d2e32;
+  background: #fff;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border-radius: 4px;
+}
+.cme-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px dashed #cbd5e1;
+}
+.cme-form-row:last-child { border-bottom: none; }
+.cme-field {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 0 1 auto;
+}
+.cme-field-wide { flex: 1 1 100%; }
+.cme-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.cme-label input[type="checkbox"] {
+  margin-right: 4px;
+  accent-color: #0d2e32;
+}
+.cme-value {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #0d2e32;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+  min-width: 100px;
+}
+.cme-placeholder {
+  font-size: 0.85rem;
+  color: #b91c1c;
+  font-style: italic;
+  font-weight: 600;
+  border-bottom: 1px dashed #fca5a5;
+  padding-bottom: 2px;
+  min-width: 100px;
+}
+
+/* ── Generic CME content blocks (Learning Objectives, Disclosure, etc.) ─ */
+.cme-block {
+  margin: 10px 0;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-left: 3px solid #097C87;
+  border-radius: 0 4px 4px 0;
+}
+.cme-block-heading {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #097C87;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.cme-block p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #0d2e32;
+}
+.cme-block .cme-placeholder {
+  display: block;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.cme-objectives {
+  margin: 0 0 0 20px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.cme-objectives li {
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+.cme-objectives li.cme-placeholder {
+  display: list-item;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.cme-evaluation {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cme-eval-options { display: inline-flex; gap: 18px; }
+.cme-eval-option {
+  font-weight: 700;
+  color: #0d2e32;
+  font-size: 1rem;
+}
+
+/* ── Conference Director signoff (right after Evaluation) ─────────────── */
+.director-signoff {
+  display: flex;
+  gap: 28px;
+  align-items: flex-end;
+  margin: 18px 0 22px;
+}
+.director-line { flex: 1; }
+.director-blank { border-bottom: 1px solid #0d2e32; height: 28px; }
+.director-label {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 700;
+}
+
+/* ── Roster column widths overridden to match HU CME form ─────────────── */
+.col-dob {
+  width: 80px;
+  text-align: center;
+  color: #475569;
+  font-size: 0.8rem;
+}
+.dob-blank {
+  display: block;
+  border-bottom: 1px solid #cbd5e1;
+  height: 16px;
+  margin: 4px auto;
+  max-width: 60px;
+}
+.col-atype {
+  width: 110px;
+  text-align: center;
+}
+.atype {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.atype-in-person {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+.atype-virtual {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.col-dept { width: 180px; }
+.col-name { font-weight: 600; }
+
+/* ── Clinical Attendees heading in RED (per CME form spec) ────────────── */
+.clinical-red {
+  color: #b91c1c !important;
+  font-weight: 900 !important;
+}
+
+/* ── ACCME accreditation disclaimer at the bottom ─────────────────────── */
+.accme-disclaimer {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 2px solid #0d2e32;
+  font-size: 0.72rem;
+  color: #475569;
+  line-height: 1.5;
+}
+.accme-disclaimer p { margin: 0 0 8px; }
+.accme-disclaimer .accme-cert {
+  font-size: 0.7rem;
+  color: #64748b;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+/* ── Print-mode tweaks ─────────────────────────────────────────────────── */
+@media print {
+  .cme-form { page-break-inside: avoid; }
+  .cme-block { page-break-inside: avoid; }
+  .director-signoff { page-break-inside: avoid; }
+  .accme-disclaimer { page-break-inside: avoid; }
+  /* Make sure the red heading actually prints red (not browser default greyscale) */
+  .clinical-red { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .atype-in-person, .atype-virtual {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+}
