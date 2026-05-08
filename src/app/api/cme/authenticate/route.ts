@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     
     // Parse historical strokes from previous Kiosk check-ins safely stored as stringified JSON in the DB
     const historicalTraces = faculty.signatureUrls
-         .map(urlStr => {
+         .map((urlStr: string) => {
              try { return JSON.parse(urlStr); } catch { return null; }
          })
          .filter(Boolean);

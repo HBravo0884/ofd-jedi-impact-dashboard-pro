@@ -35,21 +35,12 @@ ChartJS.register(
   Legend
 );
 
-// ── Department-keyed color palette + stable color hash ─────────────────────
-// Used by BubbleChart, ScatterChart, DoughnutChart so the same key (e.g.
-// department or rank) always maps to the same color across charts.
-export const DEPT_PALETTE = [
-  '#097C87', '#FCA47C', '#23CED9', '#A1CCA6', '#F9D779',
-  '#1c7294', '#e07a50', '#6ac5a9', '#d22b27', '#288f9f',
-  '#317f73', '#fbb034', '#4ba08d', '#0a254f', '#9b1414',
-  '#659eb6', '#bce1ee', '#d4a706', '#1b6d5e', '#7fb585',
-];
-export function colorForKey(key: string): string {
-  if (!key) return '#888888';
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return DEPT_PALETTE[h % DEPT_PALETTE.length];
-}
+// ── Canonical palette + stable color hash ─────────────────────────────────
+// Single source of truth lives in src/lib/canonicalPalette.ts so the legacy
+// HTML dashboard and the Next.js dashboard share the EXACT same colors for
+// the same dept name. 'OFD' / 'Office of Faculty Development' → slate grey.
+import { DEPT_PALETTE, getStringColor as colorForKey } from '@/lib/canonicalPalette';
+export { DEPT_PALETTE, colorForKey };
 export function withAlpha(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;
