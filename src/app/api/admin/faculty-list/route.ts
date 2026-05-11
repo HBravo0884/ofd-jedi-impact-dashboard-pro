@@ -24,6 +24,7 @@ export async function GET() {
       id: true,
       firstName: true,
       lastName: true,
+      email: true,
       department: true,
       division: true,
       status: true,
@@ -36,6 +37,9 @@ export async function GET() {
       id: r.id,
       firstName: r.firstName,
       lastName: r.lastName,
+      // Email is only used client-side for predicted-T1-match preview;
+      // not displayed in the dropdown. Phantom emails are filtered out.
+      email: r.email && !r.email.startsWith('phantom_') ? r.email : null,
       department: String(r.department || ''),
       division: r.division || null,
       status: r.status,
