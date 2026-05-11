@@ -81,6 +81,8 @@ model Faculty {
   degrees        String[]       // e.g. ["MD", "PhD"]
   aliases        String[]       // e.g. ["Dr. Bravo", "Aranza's iPhone"]
   signatureUrls  String[]       // Extensibility hook for iPad signature traces
+  adminTitle     String?        // e.g. "Director of Finance", "Clinical Associate Professor"
+  positionType   String?        // e.g. "Basic Science Faculty", "Clinical Faculty", "Investigators & Admin"
   
   // Relations
   attendances    Attendance[]
