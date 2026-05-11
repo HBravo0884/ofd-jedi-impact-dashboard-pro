@@ -55,15 +55,16 @@ async function loadCmeFields(eventIds: string[]): Promise<Map<string, CmeRow>> {
 }
 
 // ── GET /api/admin/events ─────────────────────────────────────────────────
-// Admin only. Returns recent events (past 60 days + future) with CME fields.
+// Admin only. Returns ALL events (full history) with CME fields and the
+// hiddenFromKiosk visibility flag. The Manage Events directory-style page
+// needs the full set so admins can find any historical event for editing
+// or merging.
 export async function GET() {
   const jar = await cookies();
   if (!(await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const lo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
   const events = await prisma.event.findMany({
-    where: { date: { gte: lo } },
     orderBy: { date: 'desc' },
     include: {
       series: { select: { id: true, title: true } },
@@ -83,6 +84,7 @@ export async function GET() {
         seriesId: e.seriesId || null,
         seriesTitle: e.series?.title || null,
         attendances: e._count.attendances,
+        hiddenFromKiosk: !!e.hiddenFromKiosk,
         learningObjectives: c?.learningObjectives ?? [],
         disclosureReport: c?.disclosureReport ?? null,
         planningCommittee: c?.planningCommittee ?? null,
@@ -167,6 +169,9 @@ export async function PATCH(req: Request) {
     if (typeof body.baseDuration === 'number')  data.baseDuration = body.baseDuration;
     if (typeof body.seriesId === 'string' || body.seriesId === null) {
       data.seriesId = body.seriesId || null;
+    }
+    if (typeof body.hiddenFromKiosk === 'boolean') {
+      data.hiddenFromKiosk = body.hiddenFromKiosk;
     }
     if (Object.keys(data).length > 0) {
       await prisma.event.update({ where: { id }, data });

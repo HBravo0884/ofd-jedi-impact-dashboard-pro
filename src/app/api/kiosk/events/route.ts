@@ -10,6 +10,10 @@ export const revalidate = 0;
 // Window: -90 days to +60 days. Wide enough that admins don't have to
 // re-create events for the kiosk; the full event roster auto-populates here.
 // Capped at 200 rows so pathological histories don't blow up the kiosk.
+//
+// Events with hiddenFromKiosk = true are filtered out so admins can suppress
+// private/internal meetings from the public kiosk picker without deleting
+// them from the database.
 export async function GET() {
   const now = new Date();
   const day = 24 * 60 * 60 * 1000;
@@ -17,7 +21,10 @@ export async function GET() {
   const hi = new Date(now.getTime() + 60 * day);
 
   const events = await prisma.event.findMany({
-    where: { date: { gte: lo, lte: hi } },
+    where: {
+      date: { gte: lo, lte: hi },
+      hiddenFromKiosk: false,
+    },
     orderBy: { date: 'desc' },
     include: { series: { select: { title: true } } },
     take: 200,

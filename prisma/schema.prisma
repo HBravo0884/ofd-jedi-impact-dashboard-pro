@@ -104,6 +104,7 @@ model Event {
   baseDuration   Int            // Official meeting length in minutes
   topic          String?
   speaker        String?
+  hiddenFromKiosk Boolean       @default(false)  // suppress from kiosk picker
   
   seriesId       String?
   series         EventSeries?   @relation(fields: [seriesId], references: [id])
