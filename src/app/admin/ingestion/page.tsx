@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, DragEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, DragEvent } from 'react';
 import Papa from 'papaparse';
 import Link from 'next/link';
 import {
@@ -79,10 +79,53 @@ interface FacultyOption {
   id: string;
   firstName: string;
   lastName: string;
+  email: string | null;
   department: string;
   division: string | null;
   status: string;
   attendances: number;
+}
+
+// Predicted-match preview — runs client-side T1 (email) and T2 (exact name)
+// matching against the fetched faculty list. T3 (fuzzy / alias) and T4
+// (create new) can't be predicted client-side without the full alias list,
+// so we return null for those cases and show '(automatic — T3 fuzzy or T4
+// new)' in the UI to be honest about the uncertainty.
+function predictedFacultyMatch(
+  email: string,
+  displayName: string,
+  options: FacultyOption[]
+): { tier: 'T1' | 'T2'; faculty: FacultyOption } | null {
+  // T1 — exact email match (only against non-phantom emails)
+  const normEmail = email.trim().toLowerCase();
+  if (normEmail) {
+    const f = options.find(
+      (o) => o.email && o.email.toLowerCase() === normEmail
+    );
+    if (f) return { tier: 'T1', faculty: f };
+  }
+  // T2 — exact firstName + lastName match. Use a simple split on the first
+  // space; matches the backend's nameParts logic for the common case.
+  const parts = displayName.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    const first = parts[0].toLowerCase();
+    const last = parts.slice(1).join(' ').toLowerCase();
+    const f = options.find(
+      (o) =>
+        o.firstName.toLowerCase() === first &&
+        o.lastName.toLowerCase() === last
+    );
+    if (f) return { tier: 'T2', faculty: f };
+  }
+  return null;
+}
+
+// Format a faculty option for the datalist <option value="..."> string.
+// MUST match what the user sees in the dropdown so the input round-trips.
+function facultyDisplayString(f: FacultyOption): string {
+  const dept = f.department.replace(/([A-Z])/g, ' $1').trim();
+  const pending = f.status !== 'VERIFIED' ? ' [pending]' : '';
+  return `${f.lastName}, ${f.firstName}${dept ? ' — ' + dept : ''}${pending}`;
 }
 
 export default function IngestionPortal() {
@@ -699,10 +742,23 @@ export default function IngestionPortal() {
                                         </td>
                                         <td style={{ ...td3, color: '#94a3b8' }}>{i + 1}</td>
                                         <td style={{ ...td3, fontWeight: 600 }}>
-                                          {a.rawName}
-                                          {a.rawName !== a.displayName && (
-                                            <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>
-                                              → {a.displayName}
+                                          {a.displayName}
+                                          {a.joinCount > 1 && (
+                                            <span
+                                              title={`Consolidated from ${a.joinCount} raw rows: ${a.rawNames}`}
+                                              style={{
+                                                marginLeft: 6, padding: '1px 6px',
+                                                background: '#dbeafe', color: '#1e40af',
+                                                borderRadius: 999, fontSize: '0.65rem',
+                                                fontWeight: 700,
+                                              }}
+                                            >
+                                              joined {a.joinCount}×
+                                            </span>
+                                          )}
+                                          {a.rawNames !== a.displayName && a.joinCount === 1 && a.rawName !== a.displayName && (
+                                            <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 4, fontSize: '0.72rem' }}>
+                                              ({a.rawName})
                                             </span>
                                           )}
                                         </td>
@@ -719,35 +775,21 @@ export default function IngestionPortal() {
                                           {a.duration} min
                                         </td>
                                         <td style={td3}>
-                                          <select
-                                            value={overrideRows[`${g.key}|${i}`] || ''}
+                                          <MatchOverrideAutocomplete
+                                            attendee={a}
+                                            groupKey={g.key}
+                                            rowIndex={i}
+                                            facultyOptions={facultyOptions}
+                                            currentOverrideId={overrideRows[`${g.key}|${i}`] || ''}
                                             disabled={isUploading || isExcluded}
-                                            onChange={(e) => {
+                                            onChange={(facultyId) => {
                                               const next = { ...overrideRows };
                                               const k = `${g.key}|${i}`;
-                                              if (e.target.value) next[k] = e.target.value;
+                                              if (facultyId) next[k] = facultyId;
                                               else delete next[k];
                                               setOverrideRows(next);
                                             }}
-                                            style={{
-                                              maxWidth: 220, fontSize: '0.75rem',
-                                              padding: '2px 4px', borderRadius: 4,
-                                              border: '1px solid var(--border)',
-                                              background: overrideRows[`${g.key}|${i}`] ? '#fef3c7' : 'white',
-                                            }}
-                                            title={overrideRows[`${g.key}|${i}`]
-                                              ? `Override: this row will be linked to ${facultyOptions.find((f) => f.id === overrideRows[`${g.key}|${i}`])?.lastName}, ${facultyOptions.find((f) => f.id === overrideRows[`${g.key}|${i}`])?.firstName}`
-                                              : 'Default: system runs T1/T2/T3/T4 automatic matching. Pick a name to override and force this attendance to link to that faculty.'}
-                                          >
-                                            <option value="">(auto-match)</option>
-                                            {facultyOptions.map((f) => (
-                                              <option key={f.id} value={f.id}>
-                                                {f.lastName}, {f.firstName}
-                                                {f.department ? ` — ${f.department.replace(/([A-Z])/g, ' $1').trim()}` : ''}
-                                                {f.status !== 'VERIFIED' ? ' [pending]' : ''}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          />
                                         </td>
                                         <td style={td3}>
                                           {isExcluded ? (
@@ -1108,3 +1150,123 @@ const th3: React.CSSProperties = {
 const td3: React.CSSProperties = {
   padding: '5px 8px', color: '#0d2e32', verticalAlign: 'top',
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// MatchOverrideAutocomplete
+// Text input + <datalist> for picking a faculty by typing. Shows the
+// system's predicted T1/T2 match underneath so the admin can verify
+// without having to override blindly.
+// ─────────────────────────────────────────────────────────────────────────
+function MatchOverrideAutocomplete({
+  attendee,
+  groupKey,
+  rowIndex,
+  facultyOptions,
+  currentOverrideId,
+  disabled,
+  onChange,
+}: {
+  attendee: { rawName: string; displayName: string; email: string };
+  groupKey: string;
+  rowIndex: number;
+  facultyOptions: FacultyOption[];
+  currentOverrideId: string;
+  disabled: boolean;
+  onChange: (facultyId: string) => void;
+}) {
+  // Build the displayString → facultyId map once
+  const displayToId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of facultyOptions) m.set(facultyDisplayString(f), f.id);
+    return m;
+  }, [facultyOptions]);
+
+  const idToFaculty = useMemo(() => {
+    const m = new Map<string, FacultyOption>();
+    for (const f of facultyOptions) m.set(f.id, f);
+    return m;
+  }, [facultyOptions]);
+
+  const predicted = useMemo(
+    () => predictedFacultyMatch(attendee.email, attendee.displayName, facultyOptions),
+    [attendee.email, attendee.displayName, facultyOptions]
+  );
+
+  const currentFaculty = currentOverrideId ? idToFaculty.get(currentOverrideId) : null;
+  const [text, setText] = useState<string>(
+    currentFaculty ? facultyDisplayString(currentFaculty) : ''
+  );
+
+  // Keep input in sync if the override changes from elsewhere (e.g., reset)
+  useEffect(() => {
+    const f = currentOverrideId ? idToFaculty.get(currentOverrideId) : null;
+    setText(f ? facultyDisplayString(f) : '');
+  }, [currentOverrideId, idToFaculty]);
+
+  const listId = `faculty-list-${groupKey}-${rowIndex}`;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          type="text"
+          list={listId}
+          value={text}
+          disabled={disabled}
+          placeholder={predicted ? '(auto — see below)' : 'Type a name…'}
+          onChange={(e) => {
+            const v = e.target.value;
+            setText(v);
+            const id = displayToId.get(v);
+            if (id) onChange(id);            // exact match → set override
+            else if (!v) onChange('');       // cleared → remove override
+            // otherwise: typed but no exact match yet → don't fire onChange
+          }}
+          style={{
+            flex: 1, minWidth: 0, maxWidth: 240,
+            fontSize: '0.75rem', padding: '3px 6px',
+            borderRadius: 4, border: '1px solid var(--border)',
+            background: currentOverrideId ? '#fef3c7' : 'white',
+          }}
+          title={
+            currentOverrideId
+              ? `Override active. Attendance for this row will be credited to ${currentFaculty ? facultyDisplayString(currentFaculty) : currentOverrideId}.`
+              : 'Type a directory name. Pick from the dropdown to override the automatic match.'
+          }
+        />
+        {currentOverrideId && !disabled && (
+          <button
+            onClick={() => { setText(''); onChange(''); }}
+            title="Clear override (return to automatic matching)"
+            style={{
+              background: 'transparent', border: 'none', color: '#854d0e',
+              cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', padding: '0 4px',
+            }}
+          >
+            ✕
+          </button>
+        )}
+        <datalist id={listId}>
+          {facultyOptions.map((f) => (
+            <option key={f.id} value={facultyDisplayString(f)} />
+          ))}
+        </datalist>
+      </div>
+      {/* Predicted-match preview, when no override is set */}
+      {!currentOverrideId && (
+        <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2, lineHeight: 1.3 }}>
+          {predicted ? (
+            <span>
+              auto → <strong>{predicted.faculty.lastName}, {predicted.faculty.firstName}</strong>
+              {' '}<span style={{ color: '#94a3b8' }}>({predicted.tier} {predicted.tier === 'T1' ? 'email' : 'name'})</span>
+            </span>
+          ) : (
+            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+              auto → T3 fuzzy or T4 new (can't preview)
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

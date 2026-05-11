@@ -83,11 +83,21 @@ export interface ParsedAttendee {
   /** Lowercased, whitespace-normalized, parens-stripped — used for dedup. */
   normalizedName: string;
   email: string;
-  /** Participant-level minutes from column 23. */
+  /** Participant-level minutes from column 23. After consolidation, this
+   *  is the SUM of all join-instances for this person within the event. */
   duration: number;
   joinTime: string;
   leaveTime: string;
   isGuest: boolean;
+  /** How many raw CSV rows were consolidated into this attendee record.
+   *  1 = single join. >1 = the person joined-then-left-then-rejoined.
+   *  When > 1, duration is the sum of the per-join durations, joinTime is
+   *  the earliest join, and leaveTime is the latest leave. */
+  joinCount: number;
+  /** Concatenated raw names from every consolidated source row, comma-
+   *  separated. Useful for the UI to show "joined as: X, Y" when the
+   *  same person appeared under slightly different display names. */
+  rawNames: string;
 }
 
 export interface ParsedEventGroup {
@@ -269,14 +279,56 @@ export function parseMeetingDetails(rows: string[][]): ParsedEventGroup[] {
       joinTime: String(row[COL.joinTime] || '').trim(),
       leaveTime: String(row[COL.leaveTime] || '').trim(),
       isGuest: String(row[COL.guest] || '').trim().toLowerCase() === 'yes',
+      joinCount: 1,
+      rawNames: rawName,
     });
   }
 
-  // Compute preview stats per group.
+  // ── Consolidate duplicate rows within each event group ─────────────
+  // Zoom records a fresh row every time someone joins (so a re-join shows
+  // as two rows). Collapse by normalizedName: sum durations, take earliest
+  // join + latest leave, prefer the row that has an email if any of them
+  // do. joinCount > 1 signals to the UI that this is a consolidated row.
   for (const g of groups.values()) {
-    const uniqueByName = new Set(g.attendees.map((a) => a.normalizedName));
+    const byName = new Map<string, ParsedAttendee>();
+    for (const a of g.attendees) {
+      const key = a.normalizedName;
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, {
+          ...a,
+          joinCount: 1,
+          rawNames: a.rawName,
+        });
+      } else {
+        // Sum participant-level minutes across joins.
+        existing.duration += a.duration;
+        existing.joinCount += 1;
+        // Append the raw display name if it's different (e.g., "(Host)").
+        if (!existing.rawNames.split(/,\s*/).includes(a.rawName)) {
+          existing.rawNames = existing.rawNames + ', ' + a.rawName;
+        }
+        // Prefer a non-empty email if we got one from a different row.
+        if (!existing.email && a.email) existing.email = a.email;
+        // Earliest join, latest leave (lexical compare is fine for HH:MM
+        // strings within the same day; not always perfect but good for UI).
+        if (a.joinTime && (!existing.joinTime || a.joinTime < existing.joinTime)) {
+          existing.joinTime = a.joinTime;
+        }
+        if (a.leaveTime && (!existing.leaveTime || a.leaveTime > existing.leaveTime)) {
+          existing.leaveTime = a.leaveTime;
+        }
+        // isGuest stays as it was on the first row; non-issue for UI.
+      }
+    }
+    g.attendees = Array.from(byName.values());
+  }
+
+  // Compute preview stats per group AFTER consolidation, so the numbers
+  // the admin sees match the rows that will actually be sent.
+  for (const g of groups.values()) {
     g.rawRowCount = g.attendees.length;
-    g.uniqueParticipants = uniqueByName.size;
+    g.uniqueParticipants = g.attendees.length; // by construction after consolidation
     g.missingEmailCount = g.attendees.filter((a) => !a.email).length;
     g.underTenMinCount = g.attendees.filter((a) => a.duration < 10).length;
     g.isLikelyGhost = g.uniqueParticipants < 5;
