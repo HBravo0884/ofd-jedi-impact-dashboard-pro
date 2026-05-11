@@ -96,6 +96,16 @@ export async function POST(request: Request) {
     let recordsSkipped = 0;
     let matchedExisting = 0;
     let createdNew = 0;
+    const newFacultySummaries: Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      department: string;
+      degrees: string[];
+      status: string;
+      sourceName: string;
+    }> = [];
 
     for (const person of attendees) {
       if (!person?.name) {
@@ -187,6 +197,19 @@ export async function POST(request: Request) {
             },
           });
           facultyId = created.id;
+          // Track newly-created profiles so the UI can show admins
+          // exactly who got auto-pending. Useful before PR #19's full
+          // quarantine adjudication tool exists.
+          newFacultySummaries.push({
+            id: created.id,
+            firstName: created.firstName,
+            lastName: created.lastName,
+            email: created.email,
+            department: String(created.department || 'Other'),
+            degrees: created.degrees,
+            status: created.status,
+            sourceName: person.name,
+          });
           // Add to in-memory caches so subsequent attendees in this batch with
           // the same name reuse this brand-new row instead of creating again.
           allFacultyProfiles.push({
@@ -231,6 +254,7 @@ export async function POST(request: Request) {
         recordsSkipped,
         matchedExisting,
         createdNew,
+        newFaculty: newFacultySummaries,
       },
       { status: 200 }
     );

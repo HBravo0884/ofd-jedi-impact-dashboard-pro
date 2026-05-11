@@ -17,6 +17,19 @@ interface SeriesOption {
 }
 
 // What we show after attempting one /api/ingest for one event group.
+interface NewFacultySummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  department: string;
+  degrees: string[];
+  status: string;
+  sourceName: string;
+  // Filled client-side: which event group this person was first created in
+  fromGroupKey?: string;
+}
+
 interface PerGroupResult {
   key: string;
   ok: boolean;
@@ -26,6 +39,7 @@ interface PerGroupResult {
   createdNew?: number;
   recordsSkipped?: number;
   eventId?: string;
+  newFaculty?: NewFacultySummary[];
 }
 
 export default function IngestionPortal() {
@@ -172,6 +186,7 @@ export default function IngestionPortal() {
             createdNew: data.createdNew ?? 0,
             recordsSkipped: data.recordsSkipped ?? 0,
             eventId: data.eventId,
+            newFaculty: Array.isArray(data.newFaculty) ? data.newFaculty : [],
           });
         } else {
           acc.push({ key: g.key, ok: false, message: data?.error || `HTTP ${res.status}` });
@@ -458,6 +473,21 @@ export default function IngestionPortal() {
           );
         })()}
 
+        {/* ── NEWLY-CREATED PENDING PROFILES ─────────────────────────── */}
+        {!isUploading && results.length > 0 && (() => {
+          // Flatten newFaculty across all groups + tag with source group key
+          const allNew: NewFacultySummary[] = [];
+          for (const r of results) {
+            if (r.ok && r.newFaculty) {
+              for (const n of r.newFaculty) {
+                allNew.push({ ...n, fromGroupKey: r.key });
+              }
+            }
+          }
+          if (allNew.length === 0) return null;
+          return <NewPendingProfilesPanel rows={allNew} groups={groups} />;
+        })()}
+
         {/* ── PRE-COMMIT CONFIRM MODAL ───────────────────────────────── */}
         {confirmOpen && (
           <div role="dialog" aria-modal="true" style={{
@@ -520,4 +550,138 @@ const smallBtn: React.CSSProperties = {
   padding: '4px 12px', borderRadius: 6, fontWeight: 600, fontSize: '0.78rem',
   cursor: 'pointer', border: '1px solid var(--border)',
   background: 'white', color: 'var(--c1d)',
+};
+
+// ───────────────────────────────────────────────────────────────────────
+// NewPendingProfilesPanel
+// Lists every Faculty row the backend auto-created during this ingest, so
+// admins can eyeball "who got auto-pending and might need to be merged
+// into an existing profile". Provides CSV export so the list can be
+// reviewed offline. Full merge UI comes in PR #19 (quarantine adjudication).
+// ───────────────────────────────────────────────────────────────────────
+function NewPendingProfilesPanel({
+  rows,
+  groups,
+}: {
+  rows: NewFacultySummary[];
+  groups: ParsedEventGroup[];
+}) {
+  const [open, setOpen] = useState(false);
+  const groupTitleByKey = new Map(groups.map((g) => [g.key, g.topic]));
+
+  const downloadCSV = () => {
+    const escape = (v: string) =>
+      /[,\"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const header = ['Name', 'Email', 'Department', 'Degrees', 'Source name (raw)', 'Event'].join(',');
+    const lines = rows.map((r) =>
+      [
+        escape(`${r.firstName} ${r.lastName}`),
+        escape(r.email),
+        escape(r.department),
+        escape(r.degrees.join('; ')),
+        escape(r.sourceName),
+        escape(groupTitleByKey.get(r.fromGroupKey || '') || ''),
+      ].join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `new_pending_profiles_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return (
+    <div style={{
+      marginTop: 12, padding: 14, borderRadius: 10,
+      background: '#fffbeb', border: '1px solid #fcd34d',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ color: '#854d0e', fontWeight: 700, fontSize: '0.95rem' }}>
+          ⚠️ {rows.length} new pending profile{rows.length === 1 ? '' : 's'} created
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={downloadCSV}
+            style={{
+              padding: '5px 12px', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem',
+              cursor: 'pointer', border: '1px solid #fcd34d',
+              background: 'white', color: '#854d0e',
+            }}
+            title="Download this list as a CSV so you can review it offline"
+          >
+            Download CSV
+          </button>
+          <button
+            onClick={() => setOpen(!open)}
+            style={{
+              padding: '5px 12px', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem',
+              cursor: 'pointer', border: '1px solid #fcd34d',
+              background: 'white', color: '#854d0e',
+            }}
+          >
+            {open ? 'Hide' : 'Show'} list
+          </button>
+        </div>
+      </div>
+      <div style={{ marginTop: 6, fontSize: '0.82rem', color: '#854d0e' }}>
+        These are people Zoom recorded under a name that didn't match any
+        existing faculty record. Their attendance IS saved — but each profile
+        is flagged as <code>PENDING_RESOLUTION</code> and may need to be
+        merged into an existing faculty row. Full merge tooling is coming in
+        PR #19 (Quarantine Adjudication).
+      </div>
+
+      {open && (
+        <div style={{
+          marginTop: 12, maxHeight: 360, overflowY: 'auto',
+          background: 'white', borderRadius: 8, border: '1px solid #fde68a',
+        }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead style={{ background: '#fef3c7', position: 'sticky', top: 0 }}>
+              <tr>
+                <th style={th2}>Name</th>
+                <th style={th2}>Email</th>
+                <th style={th2}>Department</th>
+                <th style={th2}>Degrees</th>
+                <th style={th2}>Source name</th>
+                <th style={th2}>Event</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} style={{ borderTop: '1px solid #fef3c7' }}>
+                  <td style={td2}>
+                    <strong>{r.lastName}, {r.firstName}</strong>
+                  </td>
+                  <td style={td2}>
+                    {r.email.startsWith('phantom_')
+                      ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>(none on file)</span>
+                      : r.email}
+                  </td>
+                  <td style={td2}>{r.department}</td>
+                  <td style={td2}>{r.degrees.join(', ') || '—'}</td>
+                  <td style={td2}>{r.sourceName}</td>
+                  <td style={td2}>{groupTitleByKey.get(r.fromGroupKey || '') || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const th2: React.CSSProperties = {
+  padding: '6px 10px', textAlign: 'left',
+  fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.4px',
+  color: '#854d0e', fontWeight: 700, whiteSpace: 'nowrap',
+};
+const td2: React.CSSProperties = {
+  padding: '6px 10px', color: '#0d2e32', verticalAlign: 'top',
 };
