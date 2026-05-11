@@ -303,74 +303,97 @@ export default function IngestionPortal() {
     setConfirmOpen(true);
   };
 
+  // Ingest a single event group. Reused by the per-card Approve button
+  // and the batch Confirm flow. Returns the PerGroupResult so callers
+  // can chain (e.g. batch loop) or update local state immediately.
+  const ingestOneGroup = async (g: ParsedEventGroup): Promise<PerGroupResult> => {
+    try {
+      // Filter out individually-excluded attendees + remember surviving indices
+      const excludeSet = excludedRows[g.key];
+      const survivingIndices: number[] = [];
+      for (let i = 0; i < g.attendees.length; i++) {
+        if (!excludeSet || !excludeSet.has(i)) survivingIndices.push(i);
+      }
+      const filteredGroup = {
+        ...g,
+        attendees: survivingIndices.map((i) => g.attendees[i]),
+      };
+      const payload = eventGroupToIngestPayload(filteredGroup, {
+        seriesId: selectedSeriesId || undefined,
+      });
+      // Attach per-attendee override IDs
+      payload.attendees = payload.attendees.map((a: any, idx: number) => {
+        const originalIdx = survivingIndices[idx];
+        const ov = overrideRows[`${g.key}|${originalIdx}`];
+        return ov ? { ...a, overrideFacultyId: ov } : a;
+      });
+      const res = await fetch('/api/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { key: g.key, ok: false, message: data?.error || `HTTP ${res.status}` };
+      }
+      return {
+        key: g.key,
+        ok: true,
+        message: `Wrote ${data.recordsWritten ?? 0} attendances · ${data.matchedExisting ?? 0} matched · ${data.createdNew ?? 0} new · ${data.recordsSkipped ?? 0} skipped`,
+        recordsWritten: data.recordsWritten ?? 0,
+        matchedExisting: data.matchedExisting ?? 0,
+        createdNew: data.createdNew ?? 0,
+        recordsSkipped: data.recordsSkipped ?? 0,
+        eventId: data.eventId,
+        newFaculty: Array.isArray(data.newFaculty) ? data.newFaculty : [],
+        matchAudit: Array.isArray(data.matchAudit) ? data.matchAudit : [],
+        sentIndices: survivingIndices,
+      };
+    } catch (err: any) {
+      return { key: g.key, ok: false, message: err?.message || 'Network error' };
+    }
+  };
+
+  // Track which single event is currently being ingested via its Approve
+  // button (so its button can show "Approving…" without freezing the whole
+  // page like the batch Confirm does).
+  const [approvingKey, setApprovingKey] = useState<string | null>(null);
+
+  const approveOne = async (g: ParsedEventGroup) => {
+    setApprovingKey(g.key);
+    const r = await ingestOneGroup(g);
+    // Merge into results (replace if already exists)
+    setResults((prev) => {
+      const i = prev.findIndex((x) => x.key === g.key);
+      if (i >= 0) {
+        const next = [...prev];
+        next[i] = r;
+        return next;
+      }
+      return [...prev, r];
+    });
+    setApprovingKey(null);
+  };
+
   const handleConfirmedSubmit = async () => {
     setConfirmOpen(false);
     setIsUploading(true);
-    setResults([]);
+    // Only ingest events that haven't already been ingested successfully via
+    // an individual Approve click. So Confirm becomes "Approve all remaining".
+    const alreadyOk = new Set(results.filter((r) => r.ok).map((r) => r.key));
+    const remaining = includedGroups.filter((g) => !alreadyOk.has(g.key));
     setProgressIndex(0);
 
-    const acc: PerGroupResult[] = [];
-    for (let i = 0; i < includedGroups.length; i++) {
-      const g = includedGroups[i];
+    const acc: PerGroupResult[] = [...results];
+    for (let i = 0; i < remaining.length; i++) {
+      const g = remaining[i];
       setProgressIndex(i + 1);
-      try {
-        // Filter out attendees the admin individually excluded via the
-        // expanded per-row table on the card. Also keep track of the
-        // surviving indices so we can attach per-attendee overrides.
-        const excludeSet = excludedRows[g.key];
-        const survivingIndices: number[] = [];
-        for (let i = 0; i < g.attendees.length; i++) {
-          if (!excludeSet || !excludeSet.has(i)) survivingIndices.push(i);
-        }
-        const filteredGroup = {
-          ...g,
-          attendees: survivingIndices.map((i) => g.attendees[i]),
-        };
-        const payload = eventGroupToIngestPayload(filteredGroup, {
-          seriesId: selectedSeriesId || undefined,
-        });
-        // Attach overrideFacultyId per attendee. The payload's attendees
-        // array is in survivingIndices order, so we map back to find each
-        // attendee's original row index and look up its override.
-        payload.attendees = payload.attendees.map((a: any, idx: number) => {
-          const originalIdx = survivingIndices[idx];
-          const ov = overrideRows[`${g.key}|${originalIdx}`];
-          return ov ? { ...a, overrideFacultyId: ov } : a;
-        });
-        const res = await fetch('/api/ingest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          // Compute which ORIGINAL indices we sent so we can line up the
-          // returned matchAudit with the parsed attendees in the expanded card.
-          const excludeSetForSent = excludedRows[g.key];
-          const sentIndices: number[] = [];
-          for (let i = 0; i < g.attendees.length; i++) {
-            if (!excludeSetForSent || !excludeSetForSent.has(i)) sentIndices.push(i);
-          }
-          acc.push({
-            key: g.key,
-            ok: true,
-            message: `Wrote ${data.recordsWritten ?? 0} attendances · ${data.matchedExisting ?? 0} matched · ${data.createdNew ?? 0} new · ${data.recordsSkipped ?? 0} skipped`,
-            recordsWritten: data.recordsWritten ?? 0,
-            matchedExisting: data.matchedExisting ?? 0,
-            createdNew: data.createdNew ?? 0,
-            recordsSkipped: data.recordsSkipped ?? 0,
-            eventId: data.eventId,
-            newFaculty: Array.isArray(data.newFaculty) ? data.newFaculty : [],
-            matchAudit: Array.isArray(data.matchAudit) ? data.matchAudit : [],
-            sentIndices,
-          });
-        } else {
-          acc.push({ key: g.key, ok: false, message: data?.error || `HTTP ${res.status}` });
-        }
-      } catch (err: any) {
-        acc.push({ key: g.key, ok: false, message: err?.message || 'Network error' });
-      }
-      // Snapshot intermediate results so progress is visible mid-loop
+      const r = await ingestOneGroup(g);
+      // Replace existing entry for this key (e.g. from a previous failed
+      // attempt) or append.
+      const idx = acc.findIndex((x) => x.key === g.key);
+      if (idx >= 0) acc[idx] = r;
+      else acc.push(r);
       setResults([...acc]);
     }
     setIsUploading(false);
@@ -540,11 +563,15 @@ export default function IngestionPortal() {
                 const dup = g.startDate ? existingByKey.get(dupKey) : undefined;
                 return (
                   <div key={g.key} style={{
-                    border: `1px solid ${g.isLikelyGhost ? '#fed7aa' : '#e2e8f0'}`,
-                    background: g.isLikelyGhost ? '#fff7ed' : 'white',
+                    border: r && r.ok
+                      ? '2px solid #86efac'
+                      : `1px solid ${g.isLikelyGhost ? '#fed7aa' : '#e2e8f0'}`,
+                    background: r && r.ok
+                      ? '#f0fdf4'
+                      : (g.isLikelyGhost ? '#fff7ed' : 'white'),
                     borderRadius: 8, padding: 14,
                     opacity: checked ? 1 : 0.55,
-                    transition: 'opacity 0.15s',
+                    transition: 'opacity 0.15s, border-color 0.2s, background 0.2s',
                   }}>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                       <input
@@ -612,17 +639,55 @@ export default function IngestionPortal() {
                           {isExpanded ? 'Hide details ▲' : `Show ${g.attendees.length} attendee${g.attendees.length === 1 ? '' : 's'} ▼`}
                         </button>
                       </div>
-                      {r && (
-                        <div style={{
-                          marginLeft: 8, padding: '4px 10px', borderRadius: 6,
-                          fontSize: '0.78rem', fontWeight: 700,
-                          background: r.ok ? '#dcfce7' : '#fee2e2',
-                          color: r.ok ? '#166534' : '#991b1b',
-                          maxWidth: 280,
-                        }}>
-                          {r.ok ? '✓ ' : '✕ '}{r.message}
-                        </div>
-                      )}
+                      {(() => {
+                        const alreadyIngested = !!(r && r.ok);
+                        const isApprovingNow = approvingKey === g.key;
+                        return (
+                          <div style={{ marginLeft: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                            <button
+                              onClick={() => approveOne(g)}
+                              disabled={
+                                isUploading ||
+                                isApprovingNow ||
+                                alreadyIngested ||
+                                !checked
+                              }
+                              title={
+                                alreadyIngested
+                                  ? 'Already approved & ingested. Drop a fresh file to redo.'
+                                  : !checked
+                                  ? 'Tick the box first to include this event.'
+                                  : 'Approve & ingest this single event right now (with any overrides/exclusions you set). Skip events you are not ready for.'
+                              }
+                              style={{
+                                padding: '5px 12px', borderRadius: 6, fontWeight: 700, fontSize: '0.78rem',
+                                cursor: alreadyIngested || isUploading || isApprovingNow || !checked ? 'not-allowed' : 'pointer',
+                                border: alreadyIngested ? '1px solid #86efac' : '1px solid var(--c3d)',
+                                background: alreadyIngested ? '#dcfce7' : isApprovingNow ? '#999' : 'var(--c3d)',
+                                color: alreadyIngested ? '#166534' : 'white',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {alreadyIngested
+                                ? '✓ Approved'
+                                : isApprovingNow
+                                ? 'Approving…'
+                                : '✓ Approve this event'}
+                            </button>
+                            {r && (
+                              <div style={{
+                                padding: '4px 10px', borderRadius: 6,
+                                fontSize: '0.78rem', fontWeight: 700,
+                                background: r.ok ? '#dcfce7' : '#fee2e2',
+                                color: r.ok ? '#166534' : '#991b1b',
+                                maxWidth: 280, textAlign: 'right',
+                              }}>
+                                {r.ok ? '✓ ' : '✕ '}{r.message}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* ── Expanded per-attendee table ──────────────────── */}
@@ -859,17 +924,29 @@ export default function IngestionPortal() {
               }}>
                 Clear file
               </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isUploading || totalIncludedEvents === 0}
-                style={{
-                  ...btnStyle,
-                  background: isUploading ? '#999' : 'var(--c3d)', color: 'white',
-                }}
-                title={`Send ${totalIncludedEvents} event group${totalIncludedEvents === 1 ? '' : 's'} (${totalIncludedAttendees} attendee row${totalIncludedAttendees === 1 ? '' : 's'}) to the database`}
-              >
-                {isUploading ? 'Sending…' : `📤 Confirm & ingest ${totalIncludedEvents} event${totalIncludedEvents === 1 ? '' : 's'}`}
-              </button>
+              {(() => {
+                const okKeys = new Set(results.filter((x) => x.ok).map((x) => x.key));
+                const remaining = includedGroups.filter((g) => !okKeys.has(g.key)).length;
+                return (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isUploading || remaining === 0}
+                    style={{
+                      ...btnStyle,
+                      background: isUploading || remaining === 0 ? '#999' : 'var(--c3d)', color: 'white',
+                    }}
+                    title={remaining === 0
+                      ? 'All selected events have already been approved individually. Drop a new file to ingest more.'
+                      : `Approve every event still pending. You can also approve them one at a time using the per-card buttons above.`}
+                  >
+                    {isUploading
+                      ? `Approving event ${progressIndex} of ${remaining}…`
+                      : remaining === 0
+                      ? '✓ All selected events approved'
+                      : `📤 Approve all remaining (${remaining})`}
+                  </button>
+                );
+              })()}
             </div>
           </>
         )}
