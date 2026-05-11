@@ -35,6 +35,7 @@ interface MatchAuditRow {
   sourceEmail: string;
   sourceDuration: number;
   tier:
+    | 'OVERRIDE'
     | 'T1_EMAIL'
     | 'T2_NAME'
     | 'T3_FUZZY'
@@ -74,6 +75,16 @@ interface ExistingEvent {
   attendances: number;
 }
 
+interface FacultyOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+  department: string;
+  division: string | null;
+  status: string;
+  attendances: number;
+}
+
 export default function IngestionPortal() {
   // ── File state ─────────────────────────────────────────────────────────
   const [csvName, setCsvName] = useState('');
@@ -103,6 +114,14 @@ export default function IngestionPortal() {
 
   // ── New: dismiss state for the pending-profiles panel ─────────────────
   const [pendingPanelDismissed, setPendingPanelDismissed] = useState(false);
+
+  // ── Override map: admin-picked faculty for specific attendee rows ─────
+  // Keyed by `${groupKey}|${rowIndex}` → facultyId. When set, the backend
+  // skips T1/T2/T3/T4 and links the attendance to that faculty directly.
+  const [overrideRows, setOverrideRows] = useState<Record<string, string>>({});
+
+  // ── All faculty (fetched on mount) — populates the override dropdown ──
+  const [facultyOptions, setFacultyOptions] = useState<FacultyOption[]>([]);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -143,6 +162,16 @@ export default function IngestionPortal() {
         }
       } catch {}
     })();
+    // ── Full faculty list — for the Match-override dropdown ──
+    (async () => {
+      try {
+        const r = await fetch('/api/admin/faculty-list');
+        if (r.ok) {
+          const j = await r.json();
+          if (!cancelled) setFacultyOptions(j.faculty ?? []);
+        }
+      } catch {}
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -173,6 +202,7 @@ export default function IngestionPortal() {
         // Reset per-row UI state on every fresh file
         setExpandedKey(null);
         setExcludedRows({});
+        setOverrideRows({});
         setPendingPanelDismissed(false);
         setIsParsing(false);
       },
@@ -242,13 +272,27 @@ export default function IngestionPortal() {
       setProgressIndex(i + 1);
       try {
         // Filter out attendees the admin individually excluded via the
-        // expanded per-row table on the card.
+        // expanded per-row table on the card. Also keep track of the
+        // surviving indices so we can attach per-attendee overrides.
         const excludeSet = excludedRows[g.key];
-        const filteredGroup = excludeSet && excludeSet.size > 0
-          ? { ...g, attendees: g.attendees.filter((_, i) => !excludeSet.has(i)) }
-          : g;
+        const survivingIndices: number[] = [];
+        for (let i = 0; i < g.attendees.length; i++) {
+          if (!excludeSet || !excludeSet.has(i)) survivingIndices.push(i);
+        }
+        const filteredGroup = {
+          ...g,
+          attendees: survivingIndices.map((i) => g.attendees[i]),
+        };
         const payload = eventGroupToIngestPayload(filteredGroup, {
           seriesId: selectedSeriesId || undefined,
+        });
+        // Attach overrideFacultyId per attendee. The payload's attendees
+        // array is in survivingIndices order, so we map back to find each
+        // attendee's original row index and look up its override.
+        payload.attendees = payload.attendees.map((a: any, idx: number) => {
+          const originalIdx = survivingIndices[idx];
+          const ov = overrideRows[`${g.key}|${originalIdx}`];
+          return ov ? { ...a, overrideFacultyId: ov } : a;
         });
         const res = await fetch('/api/ingest', {
           method: 'POST',
@@ -299,6 +343,7 @@ export default function IngestionPortal() {
     setErrorMessage(null);
     setExpandedKey(null);
     setExcludedRows({});
+    setOverrideRows({});
     setPendingPanelDismissed(false);
   };
 
@@ -602,6 +647,7 @@ export default function IngestionPortal() {
                                 <th style={th3}>Name (raw)</th>
                                 <th style={th3}>Email</th>
                                 <th style={th3}>Duration</th>
+                                <th style={th3} title="Pick a directory profile to force this row to link to that person.">Match override</th>
                                 <th style={th3}>Matched to</th>
                                 <th style={th3}>Tier</th>
                                 <th style={th3}>Join</th>
@@ -621,6 +667,7 @@ export default function IngestionPortal() {
                                 }
                                 const tierLabel = m
                                   ? ({
+                                      OVERRIDE: { lbl: 'override', bg: '#fde68a', fg: '#854d0e' },
                                       T1_EMAIL: { lbl: 'T1 email', bg: '#dcfce7', fg: '#166534' },
                                       T2_NAME:  { lbl: 'T2 name',  bg: '#dbeafe', fg: '#1e40af' },
                                       T3_FUZZY: { lbl: 'T3 fuzzy', bg: '#ede9fe', fg: '#5b21b6' },
@@ -670,6 +717,37 @@ export default function IngestionPortal() {
                                           textAlign: 'right',
                                         }}>
                                           {a.duration} min
+                                        </td>
+                                        <td style={td3}>
+                                          <select
+                                            value={overrideRows[`${g.key}|${i}`] || ''}
+                                            disabled={isUploading || isExcluded}
+                                            onChange={(e) => {
+                                              const next = { ...overrideRows };
+                                              const k = `${g.key}|${i}`;
+                                              if (e.target.value) next[k] = e.target.value;
+                                              else delete next[k];
+                                              setOverrideRows(next);
+                                            }}
+                                            style={{
+                                              maxWidth: 220, fontSize: '0.75rem',
+                                              padding: '2px 4px', borderRadius: 4,
+                                              border: '1px solid var(--border)',
+                                              background: overrideRows[`${g.key}|${i}`] ? '#fef3c7' : 'white',
+                                            }}
+                                            title={overrideRows[`${g.key}|${i}`]
+                                              ? `Override: this row will be linked to ${facultyOptions.find((f) => f.id === overrideRows[`${g.key}|${i}`])?.lastName}, ${facultyOptions.find((f) => f.id === overrideRows[`${g.key}|${i}`])?.firstName}`
+                                              : 'Default: system runs T1/T2/T3/T4 automatic matching. Pick a name to override and force this attendance to link to that faculty.'}
+                                          >
+                                            <option value="">(auto-match)</option>
+                                            {facultyOptions.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.lastName}, {f.firstName}
+                                                {f.department ? ` — ${f.department.replace(/([A-Z])/g, ' $1').trim()}` : ''}
+                                                {f.status !== 'VERIFIED' ? ' [pending]' : ''}
+                                              </option>
+                                            ))}
+                                          </select>
                                         </td>
                                         <td style={td3}>
                                           {isExcluded ? (

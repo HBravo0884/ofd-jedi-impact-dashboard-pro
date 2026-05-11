@@ -112,6 +112,7 @@ export async function POST(request: Request) {
     // show admins exactly how each Zoom row was cross-referenced against the
     // canonical directory.
     type MatchTier =
+      | 'OVERRIDE'
       | 'T1_EMAIL'
       | 'T2_NAME'
       | 'T3_FUZZY'
@@ -175,18 +176,32 @@ export async function POST(request: Request) {
       const firstName = nameParts[0] || 'Unknown';
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Unknown';
 
-      // T1 — Exact email match.
-      let matched = inferred.email ? byEmail.get(inferred.email.toLowerCase()) ?? null : null;
-      let resolvedTier: MatchTier | null = matched ? 'T1_EMAIL' : null;
+      // T0 (admin override) — if the UI sent overrideFacultyId for this row
+      // we look up that faculty and use it directly, skipping T1/T2/T3/T4.
+      // Override takes precedence over everything (it's the admin's
+      // explicit decision via the Match-override dropdown).
+      let overrideMatched: typeof allFacultyProfiles[number] | null = null;
+      if (person.overrideFacultyId && typeof person.overrideFacultyId === 'string') {
+        overrideMatched =
+          allFacultyProfiles.find((f: any) => f.id === person.overrideFacultyId) ?? null;
+      }
 
-      // T2 — Exact firstName + lastName match. THE bug fix vs. previous version.
-      if (!matched) {
+      // T1 — Exact email match (only runs if no override).
+      let matched = overrideMatched
+        ? overrideMatched
+        : (inferred.email ? byEmail.get(inferred.email.toLowerCase()) ?? null : null);
+      let resolvedTier: MatchTier | null = overrideMatched
+        ? 'OVERRIDE'
+        : (matched ? 'T1_EMAIL' : null);
+
+      // T2 — Exact firstName + lastName match (only if no override and no T1).
+      if (!matched && !overrideMatched) {
         matched = byName.get(`${firstName.toLowerCase()}|${lastName.toLowerCase()}`) ?? null;
         if (matched) resolvedTier = 'T2_NAME';
       }
 
-      // T3 — DNA / alias fuzzy match.
-      if (!matched) {
+      // T3 — DNA / alias fuzzy match (only if no override and no T1/T2).
+      if (!matched && !overrideMatched) {
         matched =
           allFacultyProfiles.find((f: any) =>
             f.aliases.some((alias: string) => isDnaMatch(alias, person.name, 0.85))
