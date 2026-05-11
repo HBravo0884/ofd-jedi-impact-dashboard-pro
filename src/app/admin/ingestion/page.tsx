@@ -6,9 +6,11 @@ import Link from 'next/link';
 import {
   detectFileKind,
   parseMeetingDetails,
+  parseDirectoryRoster,
   eventGroupToIngestPayload,
   type ParsedEventGroup,
   type DetectionResult,
+  type DirectoryRow,
 } from '@/lib/zoomParser';
 
 interface SeriesOption {
@@ -158,6 +160,18 @@ export default function IngestionPortal() {
   // ── New: dismiss state for the pending-profiles panel ─────────────────
   const [pendingPanelDismissed, setPendingPanelDismissed] = useState(false);
 
+  // ── Directory roster import (separate flow from Zoom attendance) ──────
+  const [directoryRows, setDirectoryRows] = useState<DirectoryRow[]>([]);
+  const [createMissingProfiles, setCreateMissingProfiles] = useState(false);
+  const [directoryImportRunning, setDirectoryImportRunning] = useState(false);
+  const [directoryImportResult, setDirectoryImportResult] = useState<{
+    summary: { total: number; t1Email: number; t2Name: number; t3Fuzzy: number; t4New: number; skipped: number };
+    results: Array<{
+      sourceName: string; tier: string; facultyId: string | null;
+      facultyName: string | null; updatedFields: string[]; reason?: string;
+    }>;
+  } | null>(null);
+
   // ── Override map: admin-picked faculty for specific attendee rows ─────
   // Keyed by `${groupKey}|${rowIndex}` → facultyId. When set, the backend
   // skips T1/T2/T3/T4 and links the attendance to that faculty directly.
@@ -225,6 +239,8 @@ export default function IngestionPortal() {
     setGroups([]);
     setIncluded({});
     setResults([]);
+    setDirectoryRows([]);
+    setDirectoryImportResult(null);
     setCsvName(file.name);
     setIsParsing(true);
     Papa.parse<string[]>(file, {
@@ -241,12 +257,16 @@ export default function IngestionPortal() {
           const init: Record<string, boolean> = {};
           for (const g of gs) init[g.key] = !g.isLikelyGhost;
           setIncluded(init);
+        } else if (det.kind === 'directory-roster') {
+          const rosterRows = parseDirectoryRoster(rows);
+          setDirectoryRows(rosterRows);
         }
         // Reset per-row UI state on every fresh file
         setExpandedKey(null);
         setExcludedRows({});
         setOverrideRows({});
         setPendingPanelDismissed(false);
+        setDirectoryImportResult(null);
         setIsParsing(false);
       },
       error: (err) => {
@@ -411,6 +431,8 @@ export default function IngestionPortal() {
     setExcludedRows({});
     setOverrideRows({});
     setPendingPanelDismissed(false);
+    setDirectoryRows([]);
+    setDirectoryImportResult(null);
   };
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -495,9 +517,50 @@ export default function IngestionPortal() {
           </div>
         )}
 
-        {/* ── NON-ATTENDANCE FILES — show explanation, no ingest ─────── */}
+        {/* ── DIRECTORY ROSTER — preview + import flow ────────────────── */}
+        {detection?.kind === 'directory-roster' && directoryRows.length > 0 && !directoryImportResult && (
+          <DirectoryRosterPreview
+            rows={directoryRows}
+            createMissing={createMissingProfiles}
+            onToggleCreateMissing={setCreateMissingProfiles}
+            isRunning={directoryImportRunning}
+            onCancel={reset}
+            onImport={async () => {
+              setDirectoryImportRunning(true);
+              setErrorMessage(null);
+              try {
+                const res = await fetch('/api/admin/directory-import', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    rows: directoryRows,
+                    createMissing: createMissingProfiles,
+                  }),
+                });
+                const j = await res.json();
+                if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+                setDirectoryImportResult(j);
+              } catch (err: any) {
+                setErrorMessage(err?.message || 'Directory import failed.');
+              } finally {
+                setDirectoryImportRunning(false);
+              }
+            }}
+          />
+        )}
+
+        {/* ── DIRECTORY ROSTER — post-import results ──────────────────── */}
+        {directoryImportResult && (
+          <DirectoryImportResultPanel
+            result={directoryImportResult}
+            onClose={reset}
+          />
+        )}
+
+        {/* ── OTHER NON-ATTENDANCE FILES — show explanation, no ingest ─ */}
         {detection &&
           detection.kind !== 'zoom-meeting-details' &&
+          detection.kind !== 'directory-roster' &&
           detection.kind !== 'unknown' && (
           <div style={{
             padding: 16, background: '#fefce8', border: '1px solid #fde68a',
@@ -1227,6 +1290,196 @@ const th3: React.CSSProperties = {
 const td3: React.CSSProperties = {
   padding: '5px 8px', color: '#0d2e32', verticalAlign: 'top',
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// DirectoryRosterPreview — preview rows from a faculty-directory CSV and
+// trigger the import (admin update of profile fields, not attendance).
+// ─────────────────────────────────────────────────────────────────────────
+function DirectoryRosterPreview({
+  rows,
+  createMissing,
+  onToggleCreateMissing,
+  isRunning,
+  onImport,
+  onCancel,
+}: {
+  rows: DirectoryRow[];
+  createMissing: boolean;
+  onToggleCreateMissing: (v: boolean) => void;
+  isRunning: boolean;
+  onImport: () => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{
+        padding: '10px 14px', background: '#ecfdf5',
+        border: '1px solid #6ee7b7', color: '#065f46',
+        borderRadius: 8, marginBottom: 12,
+      }}>
+        <strong>Faculty directory roster detected.</strong>{' '}
+        {rows.length} row{rows.length === 1 ? '' : 's'} ready to update profile
+        fields (email, title, position, division, rank, degrees). Attendance
+        records are NOT created from this file.
+      </div>
+
+      <div style={{
+        display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
+        marginBottom: 10, padding: '10px 12px', background: '#f8fafc',
+        border: '1px solid #e2e8f0', borderRadius: 8,
+      }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.88rem' }}>
+          <input type="checkbox" checked={createMissing}
+                 onChange={(e) => onToggleCreateMissing(e.target.checked)} />
+          Create new faculty for unmatched rows
+          <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: 4 }}>
+            (otherwise unmatched rows are skipped)
+          </span>
+        </label>
+      </div>
+
+      <div style={{
+        maxHeight: 400, overflowY: 'auto',
+        border: '1px solid var(--border)', borderRadius: 8,
+      }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+            <tr>
+              <th style={th3}>#</th>
+              <th style={th3}>Name</th>
+              <th style={th3}>Email</th>
+              <th style={th3}>Dept</th>
+              <th style={th3}>Division</th>
+              <th style={th3}>Rank</th>
+              <th style={th3}>Degree</th>
+              <th style={th3}>Position</th>
+              <th style={th3}>Title</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ ...td3, color: '#94a3b8' }}>{i + 1}</td>
+                <td style={{ ...td3, fontWeight: 600 }}>{r.name}</td>
+                <td style={td3}>{r.email || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={td3}>{r.dept}</td>
+                <td style={td3}>{r.division || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={td3}>{r.rank || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={td3}>{r.degree || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={td3}>{r.pos || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                <td style={td3}>{r.adminTitle || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} disabled={isRunning} style={{
+          padding: '9px 14px', background: 'transparent', color: 'var(--muted)',
+          border: '1px solid var(--border)', borderRadius: 6, fontWeight: 700, fontSize: '0.88rem',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>Cancel</button>
+        <button onClick={() => onImport()} disabled={isRunning} style={{
+          padding: '9px 14px', background: isRunning ? '#999' : '#059669', color: 'white',
+          border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '0.88rem',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          {isRunning ? 'Importing…' : `📋 Import ${rows.length} row${rows.length === 1 ? '' : 's'} to directory`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DirectoryImportResultPanel — shows per-row outcome of the import.
+// ─────────────────────────────────────────────────────────────────────────
+function DirectoryImportResultPanel({
+  result,
+  onClose,
+}: {
+  result: {
+    summary: { total: number; t1Email: number; t2Name: number; t3Fuzzy: number; t4New: number; skipped: number };
+    results: Array<{ sourceName: string; tier: string; facultyId: string | null; facultyName: string | null; updatedFields: string[]; reason?: string }>;
+  };
+  onClose: () => void;
+}) {
+  const s = result.summary;
+  return (
+    <div style={{
+      marginTop: 14, padding: 14, background: '#f0fdf4',
+      border: '1px solid #86efac', borderRadius: 10,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ color: '#166534', fontWeight: 700, fontSize: '1rem' }}>
+          ✅ Directory import complete · {s.total} row{s.total === 1 ? '' : 's'}
+        </div>
+        <button onClick={onClose} style={{
+          padding: '5px 12px', borderRadius: 6, fontWeight: 700, fontSize: '0.82rem',
+          cursor: 'pointer', border: '1px solid #86efac', background: 'white', color: '#166534',
+        }}>Done</button>
+      </div>
+      <div style={{
+        marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap',
+        fontSize: '0.85rem', color: '#0d2e32',
+      }}>
+        <span><strong>{s.t1Email}</strong> by email</span>
+        <span><strong>{s.t2Name}</strong> by name</span>
+        <span><strong>{s.t3Fuzzy}</strong> fuzzy</span>
+        <span><strong>{s.t4New}</strong> new</span>
+        <span><strong>{s.skipped}</strong> skipped</span>
+      </div>
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#166534', fontSize: '0.85rem' }}>
+          Per-row outcomes
+        </summary>
+        <div style={{
+          marginTop: 8, maxHeight: 320, overflowY: 'auto',
+          background: 'white', borderRadius: 6, border: '1px solid #d1fae5',
+        }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <thead style={{ background: '#ecfdf5', position: 'sticky', top: 0 }}>
+              <tr>
+                <th style={th3}>Source name</th>
+                <th style={th3}>Resolved to</th>
+                <th style={th3}>Tier</th>
+                <th style={th3}>Fields updated</th>
+                <th style={th3}>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.results.map((r, i) => (
+                <tr key={i} style={{ borderTop: '1px solid #d1fae5' }}>
+                  <td style={{ ...td3, fontWeight: 600 }}>{r.sourceName}</td>
+                  <td style={td3}>{r.facultyName || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                  <td style={td3}>
+                    <span style={{
+                      padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
+                      background:
+                        r.tier === 'T1_EMAIL' ? '#dcfce7' :
+                        r.tier === 'T2_NAME'  ? '#dbeafe' :
+                        r.tier === 'T3_FUZZY' ? '#ede9fe' :
+                        r.tier === 'T4_NEW'   ? '#fef3c7' : '#f1f5f9',
+                      color:
+                        r.tier === 'T1_EMAIL' ? '#166534' :
+                        r.tier === 'T2_NAME'  ? '#1e40af' :
+                        r.tier === 'T3_FUZZY' ? '#5b21b6' :
+                        r.tier === 'T4_NEW'   ? '#92400e' : '#64748b',
+                    }}>{r.tier.replace('_', ' ').toLowerCase()}</span>
+                  </td>
+                  <td style={{ ...td3, color: '#475569' }}>{r.updatedFields.join(', ') || '—'}</td>
+                  <td style={{ ...td3, color: '#94a3b8', fontSize: '0.72rem' }}>{r.reason || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────
 // MatchOverrideAutocomplete

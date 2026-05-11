@@ -34,6 +34,8 @@ export default async function DirectoryPage() {
       rankRaw: String(f.rank || 'Unknown'),
       degrees: (f.degrees || []),
       aliases: (f.aliases || []),
+      adminTitle: f.adminTitle || '',
+      positionType: f.positionType || '',
       status: String(f.status || ''),
       sessions: f._count.attendances,
     }));

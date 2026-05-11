@@ -40,6 +40,12 @@ export async function PATCH(
   if (typeof body.department === 'string')  data.department = body.department;
   if (typeof body.rank === 'string')        data.rank       = body.rank;
   if (typeof body.status === 'string')      data.status     = body.status;
+  if (typeof body.adminTitle === 'string' || body.adminTitle === null) {
+    data.adminTitle = body.adminTitle ? String(body.adminTitle).trim() : null;
+  }
+  if (typeof body.positionType === 'string' || body.positionType === null) {
+    data.positionType = body.positionType ? String(body.positionType).trim() : null;
+  }
   if (Array.isArray(body.aliases)) {
     // Dedup + drop empties — aliases are the heart of the learned name
     // matching, so keep them clean.
@@ -61,6 +67,7 @@ export async function PATCH(
         id: true, firstName: true, lastName: true, email: true,
         department: true, division: true, rank: true, status: true,
         aliases: true, degrees: true,
+        adminTitle: true, positionType: true,
         _count: { select: { attendances: true } },
       },
     });

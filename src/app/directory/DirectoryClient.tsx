@@ -15,6 +15,8 @@ interface FacultyRow {
   rankRaw: string;          // enum value (for submit)
   degrees: string[];
   aliases: string[];
+  adminTitle: string;       // NEW: 'Director of Procurement', 'Clinical Assistant Professor', etc.
+  positionType: string;     // NEW: 'Basic Science Faculty', 'Clinical Faculty', etc.
   status: string;
   sessions: number;
 }
@@ -78,7 +80,9 @@ export default function DirectoryClient({
         f.rank.toLowerCase().includes(needle) ||
         (f.degrees.join(',')).toLowerCase().includes(needle) ||
         (f.aliases.join(',')).toLowerCase().includes(needle) ||
-        f.email.toLowerCase().includes(needle)
+        f.email.toLowerCase().includes(needle) ||
+        f.adminTitle.toLowerCase().includes(needle) ||
+        f.positionType.toLowerCase().includes(needle)
       );
     }
     rows = rows.slice().sort((a, b) => {
@@ -104,13 +108,14 @@ export default function DirectoryClient({
   };
 
   const exportCSV = () => {
-    const header = ['Last Name','First Name','Email','Degrees','Aliases','Department','Rank','Status','Sessions Attended'];
+    const header = ['Last Name','First Name','Email','Title','Position Type','Degrees','Aliases','Department','Division','Rank','Status','Sessions Attended'];
     const lines = [header.map(escapeCsv).join(',')];
     for (const f of filteredSorted) {
       lines.push([
         f.lastName, f.firstName, f.email,
+        f.adminTitle, f.positionType,
         f.degrees.join('; '), f.aliases.join('; '),
-        f.department, f.rank, f.status, f.sessions,
+        f.department, f.division, f.rank, f.status, f.sessions,
       ].map(escapeCsv).join(','));
     }
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -145,6 +150,8 @@ export default function DirectoryClient({
           status:    editDraft.status,
           aliases:   editDraft.aliases,
           degrees:   editDraft.degrees,
+          adminTitle: editDraft.adminTitle || null,
+          positionType: editDraft.positionType || null,
         }),
       });
       const j = await r.json();
@@ -163,6 +170,8 @@ export default function DirectoryClient({
               rankRaw:   editDraft.rankRaw,
               aliases:   editDraft.aliases,
               degrees:   editDraft.degrees,
+              adminTitle: editDraft.adminTitle,
+              positionType: editDraft.positionType,
               status:    editDraft.status,
             }
           : row
@@ -292,6 +301,7 @@ export default function DirectoryClient({
             <thead>
               <tr style={{ background: 'var(--c1d)', color: 'white' }}>
                 <th style={th} onClick={() => toggleSort('name')}>Name{sortIcon('name')}</th>
+                <th style={th}>Title</th>
                 <th style={th}>Degrees</th>
                 {isAdmin && <th style={th}>Aliases (learned)</th>}
                 <th style={th} onClick={() => toggleSort('department')}>Department{sortIcon('department')}</th>
@@ -303,10 +313,18 @@ export default function DirectoryClient({
             </thead>
             <tbody>
               {filteredSorted.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 8 : 5} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>No matches.</td></tr>
+                <tr><td colSpan={isAdmin ? 9 : 6} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>No matches.</td></tr>
               ) : filteredSorted.map((f, i) => (
                 <tr key={f.id} style={{ background: i % 2 ? '#fafcfc' : 'white', borderTop: '1px solid var(--border)' }}>
                   <td style={td}><strong>{f.lastName}</strong>, {f.firstName}</td>
+                  <td style={{ ...td, color: '#475569', fontSize: '0.85rem' }}>
+                    {f.adminTitle || <em style={{ color: '#cbd5e1' }}>—</em>}
+                    {f.positionType && (
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
+                        {f.positionType}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ ...td, color: 'var(--muted)' }}>{f.degrees.join(', ') || <em style={{ color: '#cbd5e1' }}>—</em>}</td>
                   {isAdmin && (
                     <td style={{ ...td, color: '#64748b', fontSize: '0.78rem', maxWidth: 240 }}>
@@ -382,7 +400,14 @@ export default function DirectoryClient({
               <input type="text" value={editDraft.division}
                      onChange={(e) => setEditDraft({ ...editDraft, division: e.target.value })} style={inputStyle} />
             </Field>
-            <div /> {/* spacer */}
+            <Field label="Title (e.g. 'Clinical Assistant Professor', 'Director of Finance')">
+              <input type="text" value={editDraft.adminTitle}
+                     onChange={(e) => setEditDraft({ ...editDraft, adminTitle: e.target.value })} style={inputStyle} />
+            </Field>
+            <Field label="Position type (e.g. 'Basic Science Faculty', 'Clinical Faculty')">
+              <input type="text" value={editDraft.positionType}
+                     onChange={(e) => setEditDraft({ ...editDraft, positionType: e.target.value })} style={inputStyle} />
+            </Field>
           </div>
 
           <TokenEditor label="Degrees"
