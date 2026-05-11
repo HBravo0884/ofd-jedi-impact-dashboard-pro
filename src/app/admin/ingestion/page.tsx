@@ -30,6 +30,23 @@ interface NewFacultySummary {
   fromGroupKey?: string;
 }
 
+interface MatchAuditRow {
+  sourceName: string;
+  sourceEmail: string;
+  sourceDuration: number;
+  tier:
+    | 'T1_EMAIL'
+    | 'T2_NAME'
+    | 'T3_FUZZY'
+    | 'T4_NEW'
+    | 'SKIPPED_NO_NAME'
+    | 'SKIPPED_SHORT';
+  facultyId: string | null;
+  facultyName: string | null;
+  facultyDept: string | null;
+  reason?: string;
+}
+
 interface PerGroupResult {
   key: string;
   ok: boolean;
@@ -40,6 +57,13 @@ interface PerGroupResult {
   recordsSkipped?: number;
   eventId?: string;
   newFaculty?: NewFacultySummary[];
+  // Per-row match audit, returned by /api/ingest. Ordered the same as the
+  // attendees array we sent (filtered by excludedRows).
+  matchAudit?: MatchAuditRow[];
+  // The indices into the ORIGINAL group.attendees that were actually sent
+  // (i.e. not in excludedRows). Lets us line up matchAudit[k] with the
+  // attendee at originalIndices[k] when rendering the expanded card.
+  sentIndices?: number[];
 }
 
 interface ExistingEvent {
@@ -233,6 +257,13 @@ export default function IngestionPortal() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+          // Compute which ORIGINAL indices we sent so we can line up the
+          // returned matchAudit with the parsed attendees in the expanded card.
+          const excludeSetForSent = excludedRows[g.key];
+          const sentIndices: number[] = [];
+          for (let i = 0; i < g.attendees.length; i++) {
+            if (!excludeSetForSent || !excludeSetForSent.has(i)) sentIndices.push(i);
+          }
           acc.push({
             key: g.key,
             ok: true,
@@ -243,6 +274,8 @@ export default function IngestionPortal() {
             recordsSkipped: data.recordsSkipped ?? 0,
             eventId: data.eventId,
             newFaculty: Array.isArray(data.newFaculty) ? data.newFaculty : [],
+            matchAudit: Array.isArray(data.matchAudit) ? data.matchAudit : [],
+            sentIndices,
           });
         } else {
           acc.push({ key: g.key, ok: false, message: data?.error || `HTTP ${res.status}` });
@@ -569,6 +602,8 @@ export default function IngestionPortal() {
                                 <th style={th3}>Name (raw)</th>
                                 <th style={th3}>Email</th>
                                 <th style={th3}>Duration</th>
+                                <th style={th3}>Matched to</th>
+                                <th style={th3}>Tier</th>
                                 <th style={th3}>Join</th>
                                 <th style={th3}>Leave</th>
                               </tr>
@@ -578,50 +613,105 @@ export default function IngestionPortal() {
                                 const isExcluded = excluded.has(i);
                                 const isShort = a.duration < 10;
                                 const missingEmail = !a.email;
+                                // Look up the match audit row for this attendee, if any.
+                                let m: MatchAuditRow | null = null;
+                                if (r && r.matchAudit && r.sentIndices) {
+                                  const pos = r.sentIndices.indexOf(i);
+                                  if (pos >= 0 && r.matchAudit[pos]) m = r.matchAudit[pos];
+                                }
+                                const tierLabel = m
+                                  ? ({
+                                      T1_EMAIL: { lbl: 'T1 email', bg: '#dcfce7', fg: '#166534' },
+                                      T2_NAME:  { lbl: 'T2 name',  bg: '#dbeafe', fg: '#1e40af' },
+                                      T3_FUZZY: { lbl: 'T3 fuzzy', bg: '#ede9fe', fg: '#5b21b6' },
+                                      T4_NEW:   { lbl: 'T4 new',   bg: '#fef3c7', fg: '#92400e' },
+                                      SKIPPED_NO_NAME: { lbl: 'skipped', bg: '#f1f5f9', fg: '#64748b' },
+                                      SKIPPED_SHORT:   { lbl: 'skipped', bg: '#f1f5f9', fg: '#64748b' },
+                                    }[m.tier])
+                                  : null;
                                 return (
-                                  <tr key={i} style={{
-                                    borderTop: '1px solid var(--border)',
-                                    background: isExcluded ? '#fef2f2' : (isShort ? '#fefce8' : 'transparent'),
-                                    opacity: isExcluded ? 0.55 : 1,
-                                    textDecoration: isExcluded ? 'line-through' : 'none',
-                                  }}>
-                                    <td style={td3}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isExcluded}
-                                        disabled={isUploading}
-                                        onChange={(e) => {
-                                          const next = { ...excludedRows };
-                                          const cur = new Set(next[g.key] || []);
-                                          if (e.target.checked) cur.add(i); else cur.delete(i);
-                                          if (cur.size === 0) delete next[g.key]; else next[g.key] = cur;
-                                          setExcludedRows(next);
-                                        }}
-                                      />
-                                    </td>
-                                    <td style={{ ...td3, color: '#94a3b8' }}>{i + 1}</td>
-                                    <td style={{ ...td3, fontWeight: 600 }}>
-                                      {a.rawName}
-                                      {a.rawName !== a.displayName && (
-                                        <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>
-                                          → {a.displayName}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td style={td3}>
-                                      {missingEmail
-                                        ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>(none)</span>
-                                        : a.email}
-                                    </td>
-                                    <td style={{
-                                      ...td3, fontWeight: 700,
-                                      color: isShort ? '#92400e' : '#0d2e32',
-                                      textAlign: 'right',
-                                    }}>
-                                      {a.duration} min
-                                    </td>
-                                    <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.joinTime}</td>
-                                    <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.leaveTime}</td>
+                                      <tr key={i} style={{
+                                        borderTop: '1px solid var(--border)',
+                                        background: isExcluded ? '#fef2f2' : (isShort ? '#fefce8' : 'transparent'),
+                                        opacity: isExcluded ? 0.55 : 1,
+                                        textDecoration: isExcluded ? 'line-through' : 'none',
+                                      }}>
+                                        <td style={td3}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isExcluded}
+                                            disabled={isUploading}
+                                            onChange={(e) => {
+                                              const next = { ...excludedRows };
+                                              const cur = new Set(next[g.key] || []);
+                                              if (e.target.checked) cur.add(i); else cur.delete(i);
+                                              if (cur.size === 0) delete next[g.key]; else next[g.key] = cur;
+                                              setExcludedRows(next);
+                                            }}
+                                          />
+                                        </td>
+                                        <td style={{ ...td3, color: '#94a3b8' }}>{i + 1}</td>
+                                        <td style={{ ...td3, fontWeight: 600 }}>
+                                          {a.rawName}
+                                          {a.rawName !== a.displayName && (
+                                            <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>
+                                              → {a.displayName}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td style={td3}>
+                                          {missingEmail
+                                            ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>(none)</span>
+                                            : a.email}
+                                        </td>
+                                        <td style={{
+                                          ...td3, fontWeight: 700,
+                                          color: isShort ? '#92400e' : '#0d2e32',
+                                          textAlign: 'right',
+                                        }}>
+                                          {a.duration} min
+                                        </td>
+                                        <td style={td3}>
+                                          {isExcluded ? (
+                                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                              excluded by you
+                                            </span>
+                                          ) : m && m.facultyName ? (
+                                            <span>
+                                              <strong>{m.facultyName}</strong>
+                                              {m.facultyDept && (
+                                                <span style={{ color: '#64748b', marginLeft: 4 }}>
+                                                  · {m.facultyDept.replace(/([A-Z])/g, ' $1').trim()}
+                                                </span>
+                                              )}
+                                            </span>
+                                          ) : m ? (
+                                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                                              {m.reason || '—'}
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: '#cbd5e1' }}>—</span>
+                                          )}
+                                        </td>
+                                        <td style={td3}>
+                                          {tierLabel ? (
+                                            <span
+                                              title={m?.reason || ''}
+                                              style={{
+                                                padding: '1px 8px', borderRadius: 999,
+                                                background: tierLabel.bg, color: tierLabel.fg,
+                                                fontSize: '0.7rem', fontWeight: 700,
+                                                whiteSpace: 'nowrap',
+                                              }}
+                                            >
+                                              {tierLabel.lbl}
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: '#cbd5e1' }}>—</span>
+                                          )}
+                                        </td>
+                                        <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.joinTime}</td>
+                                        <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.leaveTime}</td>
                                   </tr>
                                 );
                               })}

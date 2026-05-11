@@ -107,9 +107,41 @@ export async function POST(request: Request) {
       sourceName: string;
     }> = [];
 
+    // Per-row match audit — what tier resolved each input row, what existing
+    // (or new) Faculty it linked to. Returned in the response so the UI can
+    // show admins exactly how each Zoom row was cross-referenced against the
+    // canonical directory.
+    type MatchTier =
+      | 'T1_EMAIL'
+      | 'T2_NAME'
+      | 'T3_FUZZY'
+      | 'T4_NEW'
+      | 'SKIPPED_NO_NAME'
+      | 'SKIPPED_SHORT';
+    const matchAudit: Array<{
+      sourceName: string;
+      sourceEmail: string;
+      sourceDuration: number;
+      tier: MatchTier;
+      facultyId: string | null;
+      facultyName: string | null;
+      facultyDept: string | null;
+      reason?: string;
+    }> = [];
+
     for (const person of attendees) {
       if (!person?.name) {
         recordsSkipped++;
+        matchAudit.push({
+          sourceName: String(person?.name || ''),
+          sourceEmail: String(person?.email || ''),
+          sourceDuration: Number(person?.duration) || 0,
+          tier: 'SKIPPED_NO_NAME',
+          facultyId: null,
+          facultyName: null,
+          facultyDept: null,
+          reason: 'Empty name field in source CSV',
+        });
         continue;
       }
 
@@ -126,6 +158,16 @@ export async function POST(request: Request) {
       // Micro-session filter: < 10 minutes is a flyby, drop it.
       if (inferred.duration < 10) {
         recordsSkipped++;
+        matchAudit.push({
+          sourceName: person.name,
+          sourceEmail: String(person.email || ''),
+          sourceDuration: inferred.duration,
+          tier: 'SKIPPED_SHORT',
+          facultyId: null,
+          facultyName: null,
+          facultyDept: null,
+          reason: `Duration ${inferred.duration} min < 10 min (ghost-session filter)`,
+        });
         continue;
       }
 
@@ -135,10 +177,12 @@ export async function POST(request: Request) {
 
       // T1 — Exact email match.
       let matched = inferred.email ? byEmail.get(inferred.email.toLowerCase()) ?? null : null;
+      let resolvedTier: MatchTier | null = matched ? 'T1_EMAIL' : null;
 
       // T2 — Exact firstName + lastName match. THE bug fix vs. previous version.
       if (!matched) {
         matched = byName.get(`${firstName.toLowerCase()}|${lastName.toLowerCase()}`) ?? null;
+        if (matched) resolvedTier = 'T2_NAME';
       }
 
       // T3 — DNA / alias fuzzy match.
@@ -147,6 +191,7 @@ export async function POST(request: Request) {
           allFacultyProfiles.find((f: any) =>
             f.aliases.some((alias: string) => isDnaMatch(alias, person.name, 0.85))
           ) ?? null;
+        if (matched) resolvedTier = 'T3_FUZZY';
       }
 
       let facultyId: string;
@@ -154,6 +199,15 @@ export async function POST(request: Request) {
       if (matched) {
         matchedExisting++;
         facultyId = matched.id;
+        matchAudit.push({
+          sourceName: person.name,
+          sourceEmail: String(person.email || ''),
+          sourceDuration: inferred.duration,
+          tier: resolvedTier || 'T1_EMAIL',
+          facultyId: matched.id,
+          facultyName: `${matched.firstName} ${matched.lastName}`,
+          facultyDept: null, // department isn't in this select; UI shows blank
+        });
 
         // Active learning: grow the alias and degree dictionaries.
         const newAliases = Array.from(new Set([...matched.aliases, person.name]));
@@ -197,6 +251,15 @@ export async function POST(request: Request) {
             },
           });
           facultyId = created.id;
+          matchAudit.push({
+            sourceName: person.name,
+            sourceEmail: String(person.email || ''),
+            sourceDuration: inferred.duration,
+            tier: 'T4_NEW',
+            facultyId: created.id,
+            facultyName: `${created.firstName} ${created.lastName}`,
+            facultyDept: String(created.department || 'Other'),
+          });
           // Track newly-created profiles so the UI can show admins
           // exactly who got auto-pending. Useful before PR #19's full
           // quarantine adjudication tool exists.
@@ -230,6 +293,17 @@ export async function POST(request: Request) {
           facultyId = existing.id;
           matchedExisting++;
           createdNew--;
+          // Race-condition retry — treat as T1_EMAIL match since the phantom
+          // email is what resolved the row this second time.
+          matchAudit.push({
+            sourceName: person.name,
+            sourceEmail: String(person.email || ''),
+            sourceDuration: inferred.duration,
+            tier: 'T1_EMAIL',
+            facultyId: existing.id,
+            facultyName: `${existing.firstName} ${existing.lastName}`,
+            facultyDept: null,
+          });
         }
       }
 
@@ -255,6 +329,7 @@ export async function POST(request: Request) {
         matchedExisting,
         createdNew,
         newFaculty: newFacultySummaries,
+        matchAudit,
       },
       { status: 200 }
     );
