@@ -42,6 +42,14 @@ interface PerGroupResult {
   newFaculty?: NewFacultySummary[];
 }
 
+interface ExistingEvent {
+  id: string;
+  title: string;
+  date: string;
+  seriesTitle: string | null;
+  attendances: number;
+}
+
 export default function IngestionPortal() {
   // ── File state ─────────────────────────────────────────────────────────
   const [csvName, setCsvName] = useState('');
@@ -59,6 +67,19 @@ export default function IngestionPortal() {
   const [progressIndex, setProgressIndex] = useState<number>(0);
   const [results, setResults] = useState<PerGroupResult[]>([]);
 
+  // ── New: per-row include/exclude on expanded event-group cards ────────
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // excludedRows[groupKey] = Set of attendee indices the admin wants to drop
+  const [excludedRows, setExcludedRows] = useState<Record<string, Set<number>>>({});
+
+  // ── New: duplicate-event detection — fetch existing events once ───────
+  // Keyed by 'YYYY-MM-DD|topic-lowercased' so we can match parsed groups
+  // against what's already in the database.
+  const [existingByKey, setExistingByKey] = useState<Map<string, ExistingEvent>>(new Map());
+
+  // ── New: dismiss state for the pending-profiles panel ─────────────────
+  const [pendingPanelDismissed, setPendingPanelDismissed] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -73,6 +94,28 @@ export default function IngestionPortal() {
         if (r.ok) {
           const j = await r.json();
           if (!cancelled) setSeriesOptions(j.series ?? []);
+        }
+      } catch {}
+    })();
+    // ── Existing events — for duplicate-detection badges ──
+    (async () => {
+      try {
+        const r = await fetch('/api/admin/events');
+        if (r.ok) {
+          const j = await r.json();
+          if (cancelled) return;
+          const m = new Map<string, ExistingEvent>();
+          for (const e of (j.events ?? []) as any[]) {
+            const k = `${e.date}|${String(e.title || '').trim().toLowerCase()}`;
+            m.set(k, {
+              id: e.id,
+              title: e.title,
+              date: e.date,
+              seriesTitle: e.seriesTitle || null,
+              attendances: e.attendances ?? 0,
+            });
+          }
+          setExistingByKey(m);
         }
       } catch {}
     })();
@@ -103,6 +146,10 @@ export default function IngestionPortal() {
           for (const g of gs) init[g.key] = !g.isLikelyGhost;
           setIncluded(init);
         }
+        // Reset per-row UI state on every fresh file
+        setExpandedKey(null);
+        setExcludedRows({});
+        setPendingPanelDismissed(false);
         setIsParsing(false);
       },
       error: (err) => {
@@ -137,7 +184,10 @@ export default function IngestionPortal() {
   // ── Selection helpers ─────────────────────────────────────────────────
   const includedKeys = Object.entries(included).filter(([, v]) => v).map(([k]) => k);
   const includedGroups = groups.filter((g) => included[g.key]);
-  const totalIncludedAttendees = includedGroups.reduce((s, g) => s + g.rawRowCount, 0);
+  const totalIncludedAttendees = includedGroups.reduce((s, g) => {
+    const exc = excludedRows[g.key]?.size ?? 0;
+    return s + Math.max(0, g.rawRowCount - exc);
+  }, 0);
   const totalIncludedEvents = includedGroups.length;
 
   const setAll = (val: boolean) => {
@@ -167,7 +217,13 @@ export default function IngestionPortal() {
       const g = includedGroups[i];
       setProgressIndex(i + 1);
       try {
-        const payload = eventGroupToIngestPayload(g, {
+        // Filter out attendees the admin individually excluded via the
+        // expanded per-row table on the card.
+        const excludeSet = excludedRows[g.key];
+        const filteredGroup = excludeSet && excludeSet.size > 0
+          ? { ...g, attendees: g.attendees.filter((_, i) => !excludeSet.has(i)) }
+          : g;
+        const payload = eventGroupToIngestPayload(filteredGroup, {
           seriesId: selectedSeriesId || undefined,
         });
         const res = await fetch('/api/ingest', {
@@ -208,6 +264,9 @@ export default function IngestionPortal() {
     setResults([]);
     setProgressIndex(0);
     setErrorMessage(null);
+    setExpandedKey(null);
+    setExcludedRows({});
+    setPendingPanelDismissed(false);
   };
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -352,6 +411,12 @@ export default function IngestionPortal() {
               {groups.map((g) => {
                 const r = results.find((x) => x.key === g.key);
                 const checked = !!included[g.key];
+                const isExpanded = expandedKey === g.key;
+                const excluded = excludedRows[g.key] || new Set<number>();
+                const includedRowCount = g.attendees.length - excluded.size;
+                // Duplicate detection: same date + same title (case-insensitive)
+                const dupKey = `${g.startDate}|${(g.topic || '').trim().toLowerCase()}`;
+                const dup = g.startDate ? existingByKey.get(dupKey) : undefined;
                 return (
                   <div key={g.key} style={{
                     border: `1px solid ${g.isLikelyGhost ? '#fed7aa' : '#e2e8f0'}`,
@@ -369,8 +434,21 @@ export default function IngestionPortal() {
                         style={{ marginTop: 4 }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, color: 'var(--c1d)', fontSize: '1rem' }}>
-                          {g.topic}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--c1d)', fontSize: '1rem' }}>
+                            {g.topic}
+                          </div>
+                          {dup && (
+                            <span
+                              title={`This event already exists in the database (${dup.attendances} attendances on file). Re-ingesting is safe — the database uses idempotent upserts so no duplicate event or duplicate attendance will be created.`}
+                              style={{
+                                padding: '1px 8px', background: '#fde68a', color: '#854d0e',
+                                borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
+                              }}
+                            >
+                              ⓘ already in DB — safe to re-ingest
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 2 }}>
                           ID {g.meetingId} · {g.startTime}
@@ -386,6 +464,11 @@ export default function IngestionPortal() {
                           {g.underTenMinCount > 0 && (
                             <span style={{ color: '#854d0e' }}>{g.underTenMinCount} under 10 min</span>
                           )}
+                          {excluded.size > 0 && (
+                            <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                              {excluded.size} excluded by you ({includedRowCount} will ingest)
+                            </span>
+                          )}
                           {g.isLikelyGhost && (
                             <span style={{
                               padding: '1px 8px', background: '#fed7aa', color: '#9a3412',
@@ -394,6 +477,19 @@ export default function IngestionPortal() {
                           )}
                           <span style={{ color: 'var(--muted)' }}>· meeting len: {g.meetingDuration} min</span>
                         </div>
+                        <button
+                          onClick={() => setExpandedKey(isExpanded ? null : g.key)}
+                          disabled={isUploading}
+                          style={{
+                            marginTop: 8, padding: '3px 10px', background: 'transparent',
+                            border: '1px solid var(--border)', borderRadius: 6,
+                            color: 'var(--c1d)', cursor: 'pointer', fontSize: '0.78rem',
+                            fontWeight: 600,
+                          }}
+                          title="Show every attendee row in this event and individually include or exclude any of them"
+                        >
+                          {isExpanded ? 'Hide details ▲' : `Show ${g.attendees.length} attendee${g.attendees.length === 1 ? '' : 's'} ▼`}
+                        </button>
                       </div>
                       {r && (
                         <div style={{
@@ -407,6 +503,133 @@ export default function IngestionPortal() {
                         </div>
                       )}
                     </div>
+
+                    {/* ── Expanded per-attendee table ──────────────────── */}
+                    {isExpanded && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap',
+                        }}>
+                          <span style={{ fontSize: '0.85rem', color: '#475569' }}>
+                            Tick the box for each row to <strong>exclude</strong> it
+                            from this event's ingest. Under-10-min rows are highlighted
+                            since the backend would auto-drop them anyway.
+                          </span>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => {
+                                const next = { ...excludedRows };
+                                next[g.key] = new Set(g.attendees.map((_, i) => i));
+                                setExcludedRows(next);
+                              }}
+                              disabled={isUploading}
+                              style={smallBtn}
+                            >
+                              Exclude all
+                            </button>
+                            <button
+                              onClick={() => {
+                                const next = { ...excludedRows };
+                                delete next[g.key];
+                                setExcludedRows(next);
+                              }}
+                              disabled={isUploading}
+                              style={smallBtn}
+                            >
+                              Include all
+                            </button>
+                            <button
+                              onClick={() => {
+                                const next = { ...excludedRows };
+                                const s = new Set<number>();
+                                for (let i = 0; i < g.attendees.length; i++) {
+                                  if (g.attendees[i].duration < 10) s.add(i);
+                                }
+                                if (s.size === 0) delete next[g.key]; else next[g.key] = s;
+                                setExcludedRows(next);
+                              }}
+                              disabled={isUploading}
+                              style={smallBtn}
+                              title="Auto-exclude every row whose duration is under 10 minutes"
+                            >
+                              Exclude under-10-min
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{
+                          maxHeight: 360, overflowY: 'auto',
+                          background: '#fafcfc', borderRadius: 6, border: '1px solid var(--border)',
+                        }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+                              <tr>
+                                <th style={th3}><span title="Tick to exclude">✕</span></th>
+                                <th style={th3}>#</th>
+                                <th style={th3}>Name (raw)</th>
+                                <th style={th3}>Email</th>
+                                <th style={th3}>Duration</th>
+                                <th style={th3}>Join</th>
+                                <th style={th3}>Leave</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {g.attendees.map((a, i) => {
+                                const isExcluded = excluded.has(i);
+                                const isShort = a.duration < 10;
+                                const missingEmail = !a.email;
+                                return (
+                                  <tr key={i} style={{
+                                    borderTop: '1px solid var(--border)',
+                                    background: isExcluded ? '#fef2f2' : (isShort ? '#fefce8' : 'transparent'),
+                                    opacity: isExcluded ? 0.55 : 1,
+                                    textDecoration: isExcluded ? 'line-through' : 'none',
+                                  }}>
+                                    <td style={td3}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isExcluded}
+                                        disabled={isUploading}
+                                        onChange={(e) => {
+                                          const next = { ...excludedRows };
+                                          const cur = new Set(next[g.key] || []);
+                                          if (e.target.checked) cur.add(i); else cur.delete(i);
+                                          if (cur.size === 0) delete next[g.key]; else next[g.key] = cur;
+                                          setExcludedRows(next);
+                                        }}
+                                      />
+                                    </td>
+                                    <td style={{ ...td3, color: '#94a3b8' }}>{i + 1}</td>
+                                    <td style={{ ...td3, fontWeight: 600 }}>
+                                      {a.rawName}
+                                      {a.rawName !== a.displayName && (
+                                        <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>
+                                          → {a.displayName}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={td3}>
+                                      {missingEmail
+                                        ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>(none)</span>
+                                        : a.email}
+                                    </td>
+                                    <td style={{
+                                      ...td3, fontWeight: 700,
+                                      color: isShort ? '#92400e' : '#0d2e32',
+                                      textAlign: 'right',
+                                    }}>
+                                      {a.duration} min
+                                    </td>
+                                    <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.joinTime}</td>
+                                    <td style={{ ...td3, color: '#64748b', fontSize: '0.75rem' }}>{a.leaveTime}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -485,7 +708,14 @@ export default function IngestionPortal() {
             }
           }
           if (allNew.length === 0) return null;
-          return <NewPendingProfilesPanel rows={allNew} groups={groups} />;
+          if (pendingPanelDismissed) return null;
+          return (
+            <NewPendingProfilesPanel
+              rows={allNew}
+              groups={groups}
+              onDismiss={() => setPendingPanelDismissed(true)}
+            />
+          );
         })()}
 
         {/* ── PRE-COMMIT CONFIRM MODAL ───────────────────────────────── */}
@@ -562,9 +792,11 @@ const smallBtn: React.CSSProperties = {
 function NewPendingProfilesPanel({
   rows,
   groups,
+  onDismiss,
 }: {
   rows: NewFacultySummary[];
   groups: ParsedEventGroup[];
+  onDismiss?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const groupTitleByKey = new Map(groups.map((g) => [g.key, g.topic]));
@@ -626,6 +858,19 @@ function NewPendingProfilesPanel({
           >
             {open ? 'Hide' : 'Show'} list
           </button>
+          {onDismiss && (
+            <button
+              onClick={onDismiss}
+              title="Dismiss this panel for the rest of the session"
+              style={{
+                padding: '5px 10px', borderRadius: 6, fontWeight: 700, fontSize: '0.9rem',
+                cursor: 'pointer', border: '1px solid #fcd34d',
+                background: 'white', color: '#854d0e',
+              }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
       <div style={{ marginTop: 6, fontSize: '0.82rem', color: '#854d0e' }}>
@@ -684,4 +929,14 @@ const th2: React.CSSProperties = {
 };
 const td2: React.CSSProperties = {
   padding: '6px 10px', color: '#0d2e32', verticalAlign: 'top',
+};
+
+// Per-row attendee table inside the expanded event-group card
+const th3: React.CSSProperties = {
+  padding: '5px 8px', textAlign: 'left',
+  fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px',
+  color: '#475569', fontWeight: 700, whiteSpace: 'nowrap',
+};
+const td3: React.CSSProperties = {
+  padding: '5px 8px', color: '#0d2e32', verticalAlign: 'top',
 };
