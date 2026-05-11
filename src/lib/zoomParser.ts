@@ -68,6 +68,7 @@ export type FileKind =
   | 'zoom-registration'
   | 'admin-units'
   | 'master-dataset'
+  | 'directory-roster'
   | 'unknown';
 
 export interface DetectionResult {
@@ -183,6 +184,18 @@ export function detectFileKind(rows: string[][]): DetectionResult {
     return {
       kind: 'zoom-meeting-details',
       reason: 'Zoom Meeting Details export (multi-event monthly file).',
+    };
+  }
+
+  // Directory roster — distinctive admin_title or session_count headers
+  if (
+    header[0] === 'name' &&
+    header.includes('email') &&
+    (header.includes('admin_title') || header.includes('session_count'))
+  ) {
+    return {
+      kind: 'directory-roster',
+      reason: 'Faculty directory roster — updates profile fields (no attendance created).',
     };
   }
 
@@ -366,4 +379,64 @@ export function eventGroupToIngestPayload(
       duration: a.duration,    // number — backend coerces defensively, Prisma needs Int
     })),
   };
+}
+
+// ─── Directory-roster CSV parser ───────────────────────────────────────────
+// Used for files with header:
+//   name,email,dept,division,rank,degree,pos,admin_title,session_count,
+//   cumulative_minutes,first_seen,last_seen
+//
+// Header is looked up case-insensitively by column name. Returns one
+// DirectoryRow per CSV row (excluding the header).
+
+export interface DirectoryRow {
+  name: string;
+  email: string;
+  dept: string;
+  division: string;
+  rank: string;
+  degree: string;
+  pos: string;
+  adminTitle: string;
+}
+
+export function parseDirectoryRoster(rows: string[][]): DirectoryRow[] {
+  if (!rows || rows.length < 2) return [];
+  const header = rows[0].map((c) => String(c || '').trim().toLowerCase());
+  const colIdx = (names: string[]): number => {
+    for (const n of names) {
+      const i = header.indexOf(n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const idx = {
+    name: colIdx(['name', 'full name', 'fullname']),
+    email: colIdx(['email', 'e-mail']),
+    dept: colIdx(['dept', 'department']),
+    division: colIdx(['division']),
+    rank: colIdx(['rank', 'academic rank']),
+    degree: colIdx(['degree', 'degrees']),
+    pos: colIdx(['pos', 'position', 'position_type', 'position type']),
+    adminTitle: colIdx(['admin_title', 'admin title', 'title']),
+  };
+  const out: DirectoryRow[] = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.every((c) => !String(c || '').trim())) continue;
+    const get = (i: number) => (i >= 0 && i < row.length ? String(row[i] || '').trim() : '');
+    const name = get(idx.name);
+    if (!name) continue; // skip rows with no name
+    out.push({
+      name,
+      email: get(idx.email),
+      dept: get(idx.dept),
+      division: get(idx.division),
+      rank: get(idx.rank),
+      degree: get(idx.degree),
+      pos: get(idx.pos),
+      adminTitle: get(idx.adminTitle),
+    });
+  }
+  return out;
 }
