@@ -81,6 +81,11 @@ export default function ManageEventsPage() {
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [mergingNow, setMergingNow] = useState(false);
 
+  // Delete-event modal: typed-title confirmation
+  const [deleting, setDeleting] = useState<EventRow | null>(null);
+  const [deleteTypedTitle, setDeleteTypedTitle] = useState('');
+  const [deletingNow, setDeletingNow] = useState(false);
+
   // Template autopopulation
   const [template, setTemplate] = useState<Template | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
@@ -232,20 +237,43 @@ export default function ManageEventsPage() {
     }
   };
 
-  const handleDelete = async (ev: EventRow) => {
-    const force = ev.attendances > 0;
-    const msg = force
-      ? `"${ev.title}" has ${ev.attendances} attendance records. Delete event AND all attendances?`
-      : `Delete "${ev.title}"?`;
-    if (!confirm(msg)) return;
-    const url = `/api/admin/events?id=${encodeURIComponent(ev.id)}${force ? '&force=1' : ''}`;
-    const r = await fetch(url, { method: 'DELETE' });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      alert('Delete failed: ' + (j?.error || r.status));
+  // Open the typed-title delete modal instead of using window.confirm.
+  // The two-step affordance (button → modal → typed title → submit) makes
+  // accidental nukes of events with hundreds of attendance records very hard.
+  const handleDelete = (ev: EventRow) => {
+    setDeleting(ev);
+    setDeleteTypedTitle('');
+  };
+  const closeDelete = () => { setDeleting(null); setDeleteTypedTitle(''); };
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    if (deleteTypedTitle.trim() !== deleting.title.trim()) {
+      setErrorMessage(`Please type the event title exactly to confirm.`);
       return;
     }
-    reload();
+    setDeletingNow(true);
+    setErrorMessage(null);
+    try {
+      const force = deleting.attendances > 0;
+      const url = `/api/admin/events?id=${encodeURIComponent(deleting.id)}${force ? '&force=1' : ''}`;
+      const r = await fetch(url, { method: 'DELETE' });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
+      const j = await r.json().catch(() => ({}));
+      setFlashMessage(
+        `Deleted "${deleting.title}"` +
+        (j.deletedAttendances ? ` and ${j.deletedAttendances} attendance record(s).` : '.')
+      );
+      setTimeout(() => setFlashMessage(null), 4000);
+      closeDelete();
+      reload();
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Delete failed');
+    } finally {
+      setDeletingNow(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -755,6 +783,54 @@ export default function ManageEventsPage() {
               ...btnPrimary, background: mergingNow || !mergeTargetId ? '#999' : '#dc2626',
             }} title="Move attendances and delete source event.">
               {mergingNow ? 'Merging…' : 'Confirm merge'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── DELETE MODAL ─────────────────────────────────────────────────── */}
+      {deleting && (
+        <Modal title={`Delete "${deleting.title}"?`} onClose={deletingNow ? undefined : closeDelete}>
+          <p style={{ marginTop: 0, fontSize: '0.92rem', color: '#475569' }}>
+            This will permanently remove the event{deleting.attendances > 0 && (
+              <> AND its <strong>{deleting.attendances}</strong> attendance record{deleting.attendances === 1 ? '' : 's'}</>
+            )}. Faculty profiles are not affected — only the link between them
+            and this event.
+          </p>
+          {deleting.attendances > 0 && (
+            <div style={{
+              padding: 10, background: '#fef2f2', border: '1px solid #fecaca',
+              borderRadius: 6, marginBottom: 12, fontSize: '0.85rem', color: '#991b1b',
+            }}>
+              ⚠ {deleting.attendances} attendance record{deleting.attendances === 1 ? '' : 's'} will be
+              deleted alongside the event. This cannot be undone from the UI.
+            </div>
+          )}
+          <p style={{ color: '#0d2e32', fontSize: '0.9rem', marginBottom: 6 }}>
+            To confirm, type the event title exactly:
+          </p>
+          <p style={{ margin: '0 0 6px 0', fontSize: '0.85rem', color: '#475569', fontFamily: 'monospace' }}>
+            {deleting.title}
+          </p>
+          <input type="text" value={deleteTypedTitle}
+                 onChange={(e) => setDeleteTypedTitle(e.target.value)}
+                 placeholder="Type the title above to confirm"
+                 autoFocus
+                 style={{
+                   width: '100%', padding: '9px 12px', fontSize: '0.95rem',
+                   border: '1px solid var(--border)', borderRadius: 6,
+                   fontFamily: 'inherit', outline: 'none', marginBottom: 14,
+                 }} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={closeDelete} disabled={deletingNow} style={btnGhost}>Cancel</button>
+            <button onClick={confirmDelete}
+                    disabled={deletingNow || deleteTypedTitle.trim() !== deleting.title.trim()}
+                    style={{
+                      ...btnPrimary,
+                      background: deletingNow || deleteTypedTitle.trim() !== deleting.title.trim()
+                        ? '#999' : '#dc2626',
+                    }}>
+              {deletingNow ? 'Deleting…' : (deleting.attendances > 0 ? `Delete event + ${deleting.attendances} record${deleting.attendances === 1 ? '' : 's'}` : 'Delete event')}
             </button>
           </div>
         </Modal>
