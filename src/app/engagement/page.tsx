@@ -3,6 +3,7 @@ import {
   ScatterChart,
   DoughnutChart,
 } from '@/components/DashboardChart/DashboardChart';
+import { getStringColor } from '@/lib/canonicalPalette';
 import { DeptBreadthVsDepthChart } from '@/components/DeptBreadthVsDepthChart';
 import { TOOLTIPS } from '@/lib/tooltipCopy';
 import { prisma } from '@/lib/prisma';
@@ -159,7 +160,7 @@ export default async function EngagementPage() {
           labels={rankLabels}
           counts={rankCounts}
           tooltipLabel="Individuals"
-          colors={RANK_PALETTE}
+          colors={rankLabels.map((r) => getStringColor(r))}
         />
         <DoughnutChart
           labels={positionLabels}

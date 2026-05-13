@@ -20,6 +20,8 @@ import styles from './DashboardChart.module.css';
 import React, { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { SubTitle } from 'chart.js';
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -31,6 +33,7 @@ ChartJS.register(
   ScatterController,
   DoughnutController,
   Title,
+  SubTitle,
   Tooltip,
   Legend
 );
@@ -86,8 +89,14 @@ export function BubbleChart({ points }: BubbleChartProps) {
       legend: {
         display: false,
       },
+      // Title is rendered as an h3 above the chart on screen, but Chart.js
+      // also draws it onto the canvas so it appears in PNG exports.
       title: {
-        display: false,
+        display: true,
+        text: 'Faculty Reach (sessions attended per person)',
+        font: { size: 14, weight: 'bold' as const, family: "'Garamond', serif" },
+        color: '#0d2e32',
+        padding: { top: 4, bottom: 12 },
       },
       tooltip: {
         backgroundColor: '#fff',
@@ -220,7 +229,20 @@ export function ScatterChart({
           usePointStyle: true,
         },
       },
-      title: { display: false },
+      title: {
+        display: true,
+        text: title,
+        font: { size: 14, weight: 'bold' as const, family: "'Garamond', serif" },
+        color: '#0d2e32',
+        padding: { top: 4, bottom: 4 },
+      },
+      subtitle: {
+        display: true,
+        text: sub,
+        font: { size: 11, weight: 'normal' as const, family: "'Segoe UI', Arial, sans-serif" },
+        color: '#475569',
+        padding: { bottom: 12 },
+      },
       tooltip: {
         backgroundColor: '#fff',
         titleColor: '#0d2e32',
@@ -308,7 +330,20 @@ export function DoughnutChart({
           usePointStyle: true,
         },
       },
-      title: { display: false },
+      title: {
+        display: true,
+        text: title,
+        font: { size: 14, weight: 'bold' as const, family: "'Garamond', serif" },
+        color: '#0d2e32',
+        padding: { top: 4, bottom: 4 },
+      },
+      subtitle: {
+        display: true,
+        text: sub,
+        font: { size: 11, weight: 'normal' as const, family: "'Segoe UI', Arial, sans-serif" },
+        color: '#475569',
+        padding: { bottom: 12 },
+      },
       tooltip: {
         backgroundColor: '#fff',
         titleColor: '#0d2e32',
@@ -427,7 +462,20 @@ export const BarChart = React.forwardRef<any, BarDataPoint>(({
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      title: { display: false },
+      title: {
+        display: true,
+        text: title,
+        font: { size: 14, weight: 'bold' as const, family: "'Garamond', serif" },
+        color: '#0d2e32',
+        padding: { top: 4, bottom: 4 },
+      },
+      subtitle: {
+        display: true,
+        text: sub,
+        font: { size: 11, weight: 'normal' as const, family: "'Segoe UI', Arial, sans-serif" },
+        color: '#475569',
+        padding: { bottom: 12 },
+      },
       tooltip: {
         backgroundColor: '#fff',
         titleColor: '#0d2e32',
