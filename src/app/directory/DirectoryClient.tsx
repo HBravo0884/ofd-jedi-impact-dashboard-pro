@@ -67,6 +67,10 @@ export default function DirectoryClient({
   const [deleteTypedName, setDeleteTypedName] = useState('');
   const [deletingNow, setDeletingNow] = useState(false);
 
+  // Mailing-list modal — admin-only feature for emailing the current filtered set.
+  const [mailingListOpen, setMailingListOpen] = useState(false);
+  const [mailingListCopied, setMailingListCopied] = useState<string | null>(null);
+
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -346,6 +350,14 @@ export default function DirectoryClient({
                    borderRadius: 6, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
           ⬇ Export CSV ({filteredSorted.length})
         </button>
+        {isAdmin && (
+          <button onClick={() => { setMailingListOpen(true); setMailingListCopied(null); }}
+            style={{ padding: '10px 16px', background: 'var(--c1)', color: 'white', border: 'none',
+                     borderRadius: 6, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
+            title="Build a mailing list from the current filter / sort. Exports name + email + department.">
+            Mailing list ({filteredSorted.filter((f) => !!f.email).length})
+          </button>
+        )}
       </div>
 
       <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 0, overflow: 'hidden' }}>
@@ -354,6 +366,7 @@ export default function DirectoryClient({
             <thead>
               <tr style={{ background: 'var(--c1d)', color: 'white' }}>
                 <th style={th} onClick={() => toggleSort('name')}>Name{sortIcon('name')}</th>
+                {isAdmin && <th style={th}>Email</th>}
                 <th style={th}>Title</th>
                 <th style={th}>Degrees</th>
                 {isAdmin && <th style={th}>Aliases (learned)</th>}
@@ -366,7 +379,7 @@ export default function DirectoryClient({
             </thead>
             <tbody>
               {filteredSorted.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 9 : 6} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>No matches.</td></tr>
+                <tr><td colSpan={isAdmin ? 10 : 6} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>No matches.</td></tr>
               ) : filteredSorted.map((f, i) => (
                 <tr key={f.id} style={{ background: i % 2 ? '#fafcfc' : 'white', borderTop: '1px solid var(--border)' }}>
                   <td style={td}>
@@ -380,6 +393,20 @@ export default function DirectoryClient({
                       <span><strong>{f.lastName}</strong>, {f.firstName}</span>
                     )}
                   </td>
+                  {isAdmin && (
+                    <td style={{ ...td, fontSize: '0.78rem', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.email ? (
+                        <a href={`mailto:${f.email}`}
+                           style={{ color: 'var(--c1)', textDecoration: 'none' }}
+                           title={f.email}
+                           onClick={(e) => e.stopPropagation()}>
+                          {f.email}
+                        </a>
+                      ) : (
+                        <em style={{ color: '#cbd5e1' }}>—</em>
+                      )}
+                    </td>
+                  )}
                   <td style={{ ...td, color: '#475569', fontSize: '0.85rem' }}>
                     {f.adminTitle || <em style={{ color: '#cbd5e1' }}>—</em>}
                     {f.positionType && (
@@ -580,6 +607,135 @@ export default function DirectoryClient({
               {deletingNow ? 'Deleting…' : 'Delete faculty'}
             </button>
           </div>
+        </Modal>
+      )}
+
+      {/* ── MAILING LIST MODAL ───────────────────────────────────────────── */}
+      {mailingListOpen && (
+        <Modal title="Mailing list — current filter" onClose={() => { setMailingListOpen(false); setMailingListCopied(null); }}>
+          {(() => {
+            const rows = filteredSorted.filter((f) => !!f.email);
+            const withoutEmail = filteredSorted.length - rows.length;
+            const emails = rows.map((f) => f.email);
+            const semicolon = emails.join('; ');
+            const comma     = emails.join(', ');
+
+            const copy = async (text: string, label: string) => {
+              try {
+                await navigator.clipboard.writeText(text);
+                setMailingListCopied(label);
+                setTimeout(() => setMailingListCopied(null), 2200);
+              } catch {
+                setErrorMessage('Could not copy to clipboard. You may need to allow clipboard access.');
+              }
+            };
+
+            const downloadCsv = () => {
+              const header = ['Last Name', 'First Name', 'Email', 'Department', 'Rank', 'Position Type', 'Sessions Attended'];
+              const lines = [header.map(escapeCsv).join(',')];
+              for (const f of rows) {
+                lines.push([
+                  f.lastName, f.firstName, f.email,
+                  f.department, f.rank, f.positionType,
+                  f.sessions,
+                ].map(escapeCsv).join(','));
+              }
+              const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `mailing_list_${new Date().toISOString().slice(0,10)}.csv`;
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            };
+
+            return (
+              <>
+                <p style={{ marginTop: 0, fontSize: '0.92rem', color: '#475569' }}>
+                  <strong>{rows.length}</strong> recipient{rows.length === 1 ? '' : 's'} in the current
+                  filter / sort. {withoutEmail > 0 && (
+                    <span style={{ color: '#854d0e' }}>
+                      ({withoutEmail} profile{withoutEmail === 1 ? '' : 's'} without an email on file, excluded.)
+                    </span>
+                  )}
+                </p>
+
+                <div style={{
+                  background: '#fafcfc', border: '1px solid var(--border)', borderRadius: 6,
+                  padding: 10, marginBottom: 12, maxHeight: 160, overflowY: 'auto',
+                  fontFamily: 'monospace', fontSize: '0.78rem', color: '#0d2e32', lineHeight: 1.45,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>
+                  {rows.length === 0
+                    ? <em style={{ color: '#94a3b8', fontFamily: 'inherit' }}>No recipients with an email match the current filter.</em>
+                    : rows.slice(0, 20).map((f, i) =>
+                        <div key={i}>{f.lastName}, {f.firstName} &lt;{f.email}&gt;</div>
+                      )}
+                  {rows.length > 20 && (
+                    <div style={{ marginTop: 6, color: 'var(--muted)', fontStyle: 'italic', fontFamily: 'inherit' }}>
+                      … plus {rows.length - 20} more
+                    </div>
+                  )}
+                </div>
+
+                <p style={{ fontSize: '0.82rem', color: '#475569', margin: '6px 0 6px 0' }}>
+                  Copy the addresses straight into your client's BCC field. Outlook expects
+                  semicolons, Gmail accepts either, mail-merge tools want the CSV.
+                </p>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+                  <button
+                    onClick={() => copy(semicolon, 'semicolon')}
+                    disabled={rows.length === 0}
+                    style={{
+                      ...btnGhost,
+                      background: rows.length === 0 ? '#f1f5f9' : 'white',
+                      cursor: rows.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Copy as 'a@x.com; b@x.com' — paste into Outlook BCC.">
+                    Copy for Outlook (; separated)
+                  </button>
+                  <button
+                    onClick={() => copy(comma, 'comma')}
+                    disabled={rows.length === 0}
+                    style={{
+                      ...btnGhost,
+                      background: rows.length === 0 ? '#f1f5f9' : 'white',
+                      cursor: rows.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Copy as 'a@x.com, b@x.com' — paste into Gmail BCC.">
+                    Copy for Gmail (, separated)
+                  </button>
+                  <button
+                    onClick={downloadCsv}
+                    disabled={rows.length === 0}
+                    style={{
+                      ...btnPrimary,
+                      background: rows.length === 0 ? '#999' : 'var(--c1)',
+                    }}
+                    title="Download a CSV with name, email, department — feed into Word mail-merge.">
+                    Download CSV
+                  </button>
+                </div>
+
+                {mailingListCopied && (
+                  <div style={{
+                    background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0',
+                    padding: '6px 10px', borderRadius: 6, fontSize: '0.84rem', fontWeight: 600,
+                    marginTop: 8,
+                  }}>
+                    ✓ Copied {rows.length} address{rows.length === 1 ? '' : 'es'} to clipboard
+                    ({mailingListCopied === 'semicolon' ? 'Outlook' : 'Gmail'} format).
+                  </div>
+                )}
+
+                <p style={{ fontSize: '0.74rem', color: 'var(--muted)', marginTop: 16, marginBottom: 0 }}>
+                  Tip: tighten the filter or status (Verified / Pending) on the directory page
+                  before opening this dialog to scope the list. Changing the filter while this
+                  modal is open updates the count live.
+                </p>
+              </>
+            );
+          })()}
         </Modal>
       )}
     </>
