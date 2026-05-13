@@ -30,27 +30,47 @@ type CmeRow = {
 async function loadCmeFields(eventIds: string[]): Promise<Map<string, CmeRow>> {
   const map = new Map<string, CmeRow>();
   if (eventIds.length === 0) return map;
-  try {
-    const rows = (await prisma.$queryRawUnsafe(
-      `SELECT id,
-              "learningObjectives",
-              "disclosureReport",
-              "planningCommittee",
-              "acknowledgmentOfSupport",
-              "eventTime",
-              "location",
-              "isGrandRounds"
-         FROM "Event"
-        WHERE id = ANY($1::text[])`,
-      eventIds
-    )) as CmeRow[];
-    for (const r of rows) map.set(r.id, r);
-  } catch (e) {
-    // If the migration hasn't been run yet, fall through with an empty
-    // map so the page still renders. The sign-in sheet shows red
-    // placeholders for every field.
-    console.warn('[events] CME-field columns not yet present:', (e as any)?.message);
+
+  // Initialize an empty row per event so callers can always do cme.get(id).
+  for (const id of eventIds) {
+    map.set(id, {
+      id,
+      learningObjectives: null,
+      disclosureReport: null,
+      planningCommittee: null,
+      acknowledgmentOfSupport: null,
+      eventTime: null,
+      location: null,
+      isGrandRounds: null,
+    });
   }
+
+  // Fetch each CME column INDEPENDENTLY so if one column is missing on the
+  // DB (e.g. a partial migration), the others still populate. The old
+  // single-query approach would fail entirely if any one column didn't exist.
+  const fields: Array<keyof CmeRow> = [
+    'learningObjectives',
+    'disclosureReport',
+    'planningCommittee',
+    'acknowledgmentOfSupport',
+    'eventTime',
+    'location',
+    'isGrandRounds',
+  ];
+  await Promise.all(fields.map(async (field) => {
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT id, "${field}" FROM "Event" WHERE id = ANY($1::text[])`,
+        eventIds,
+      )) as Array<{ id: string } & Record<string, any>>;
+      for (const r of rows) {
+        const existing = map.get(r.id);
+        if (existing) (existing as any)[field] = r[field];
+      }
+    } catch (e) {
+      console.warn(`[events] CME column "${field}" not present:`, (e as any)?.message);
+    }
+  }));
   return map;
 }
 

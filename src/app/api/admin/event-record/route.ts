@@ -39,21 +39,31 @@ export async function GET() {
     include: { series: { select: { id: true, title: true } } },
   });
 
-  // CME fields via raw SQL
+  // CME fields fetched column-by-column so a missing column doesn't
+  // wipe out the others. Each query is independent — if one fails the
+  // others still populate.
+  const eventIds = events.map((e: any) => e.id);
   let cmeMap = new Map<string, any>();
-  try {
-    const eventIds = events.map((e: any) => e.id);
-    if (eventIds.length > 0) {
-      const cmeRows = (await prisma.$queryRawUnsafe(
-        `SELECT id, "eventTime", "location", "isGrandRounds"
-           FROM "Event"
-          WHERE id = ANY($1::text[])`,
-        eventIds,
-      )) as any[];
-      for (const r of cmeRows) cmeMap.set(r.id, r);
-    }
-  } catch {
-    // Degrades gracefully if CME migration hasn't run
+  for (const id of eventIds) {
+    cmeMap.set(id, { eventTime: null, location: null, isGrandRounds: false });
+  }
+  if (eventIds.length > 0) {
+    const cmeFields = ['eventTime', 'location', 'isGrandRounds'];
+    await Promise.all(cmeFields.map(async (field) => {
+      try {
+        const rows = (await prisma.$queryRawUnsafe(
+          `SELECT id, "${field}" FROM "Event" WHERE id = ANY($1::text[])`,
+          eventIds,
+        )) as Array<{ id: string } & Record<string, any>>;
+        for (const r of rows) {
+          const existing = cmeMap.get(r.id);
+          if (existing) (existing as any)[field] = r[field];
+        }
+      } catch (e) {
+        console.warn(`[event-record] CME column "${field}" not present:`,
+          (e as any)?.message);
+      }
+    }));
   }
 
   return NextResponse.json({
