@@ -19,6 +19,7 @@ const TABS: Tab[] = [
   { href: '/engagement', label: 'Engagement' },
   { href: '/drilldown', label: 'Impact Drilldown', adminOnly: true },
   { href: '/roster', label: 'Event Roster', adminOnly: true },
+  { href: '/admin/event-record', label: 'Event Record', adminOnly: true },
   { href: '/directory', label: 'Directory', adminOnly: true },
   { href: '/methods', label: 'Data & Methods' },
 ];

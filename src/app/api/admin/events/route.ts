@@ -85,6 +85,9 @@ export async function GET() {
         seriesTitle: e.series?.title || null,
         attendances: e._count.attendances,
         hiddenFromKiosk: !!e.hiddenFromKiosk,
+        speaker:  e.speaker  || null,
+        speaker2: e.speaker2 || null,
+        speaker3: e.speaker3 || null,
         learningObjectives: c?.learningObjectives ?? [],
         disclosureReport: c?.disclosureReport ?? null,
         planningCommittee: c?.planningCommittee ?? null,
@@ -172,6 +175,15 @@ export async function PATCH(req: Request) {
     }
     if (typeof body.hiddenFromKiosk === 'boolean') {
       data.hiddenFromKiosk = body.hiddenFromKiosk;
+    }
+    if (typeof body.speaker === 'string' || body.speaker === null) {
+      data.speaker = body.speaker ? String(body.speaker).trim() : null;
+    }
+    if (typeof body.speaker2 === 'string' || body.speaker2 === null) {
+      data.speaker2 = body.speaker2 ? String(body.speaker2).trim() : null;
+    }
+    if (typeof body.speaker3 === 'string' || body.speaker3 === null) {
+      data.speaker3 = body.speaker3 ? String(body.speaker3).trim() : null;
     }
     if (Object.keys(data).length > 0) {
       await prisma.event.update({ where: { id }, data });
