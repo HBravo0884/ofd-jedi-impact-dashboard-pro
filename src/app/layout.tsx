@@ -3,9 +3,10 @@ import './globals.css';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { TopNav } from '@/components/TopNav';
-import AdminLogoutButton from '@/components/AdminGate/AdminLogoutButton';
+import AdminMenu from '@/components/AdminMenu';
 import { ADMIN_COOKIE_NAME, verifyAdmin } from '@/lib/adminAuth';
 import { getHeaderStats } from '@/lib/headerStats';
+import { prisma } from '@/lib/prisma';
 
 export const metadata: Metadata = {
   title: 'HUCM Office of Faculty Development — Impact Dashboard',
@@ -27,6 +28,15 @@ export default async function RootLayout({
   const jar = await cookies();
   const isAdmin = await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value);
   const stats = await getHeaderStats();
+
+  // For the Admin Menu badge — only counted for admins so we don't query
+  // the DB for unauthenticated visitors.
+  let pendingCount = 0;
+  if (isAdmin) {
+    try {
+      pendingCount = await prisma.faculty.count({ where: { status: 'PENDING_RESOLUTION' } });
+    } catch {}
+  }
 
   return (
     <html lang="en">
@@ -52,68 +62,7 @@ export default async function RootLayout({
               {stats.sessions.toLocaleString()} sessions
             </span>
             <div className="hdr-badge-actions">
-              {isAdmin && (
-                <a
-                  href="/kiosk"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hdr-pill hdr-pill-purple"
-                >
-                  📱 Launch iPad Kiosk
-                </a>
-              )}
-              {isAdmin && (
-                <button
-                  type="button"
-                  className="hdr-pill hdr-pill-darkteal"
-                  onClick={undefined /* served by client island below */}
-                  data-action="print"
-                  // The actual onClick handler lives in the small client snippet
-                  // injected via <PrintButton/> so we can keep the layout server-side.
-                >
-                  🖨️ Download Graphs (PDF)
-                </button>
-              )}
-              {isAdmin && (
-                <a
-                  href="/api/admin/exports/directory.csv"
-                  className="hdr-pill hdr-pill-primary"
-                  download="HUCM_Faculty_Directory.csv"
-                >
-                  ⬇ Clean Directory CSV
-                </a>
-              )}
-              {isAdmin && (
-                <Link href="/admin/events" className="hdr-pill hdr-pill-orange">
-                  📅 Manage Events
-                </Link>
-              )}
-              {isAdmin && (
-                <Link href="/admin/signature-trainer" className="hdr-pill hdr-pill-darkteal">
-                  ✍️ Train Signatures
-                </Link>
-              )}
-              {isAdmin && (
-                <Link href="/admin/signin-sheet" className="hdr-pill hdr-pill-primary">
-                  🖨️ Sign-in Sheets
-                </Link>
-              )}
-              {isAdmin && (
-                <Link href="/admin/audit" className="hdr-pill hdr-pill-darkteal">
-                  🧪 Verification Audit
-                </Link>
-              )}
-              {isAdmin && (
-                <Link href="/admin/settings" className="hdr-pill hdr-pill-orange">
-                  ⚙️ Settings
-                </Link>
-              )}
-              {isAdmin && (
-                <Link href="/admin/ingestion" className="hdr-pill hdr-pill-orange">
-                  ⚙️ Manage Data
-                </Link>
-              )}
-              {isAdmin && <AdminLogoutButton />}
+              {isAdmin && <AdminMenu pendingCount={pendingCount} />}
             </div>
           </div>
         </header>
