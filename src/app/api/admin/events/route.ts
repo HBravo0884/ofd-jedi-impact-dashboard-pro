@@ -191,6 +191,53 @@ export async function PATCH(req: Request) {
     await persistCmeFields(id, body);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
+    // Unique constraint failure on (seriesId, date::date, title) — the
+    // edited values collide with another existing event in the DB. Look
+    // up the conflicting event so the UI can offer a helpful next step
+    // (rename / change date / merge into the existing one).
+    if (err?.code === 'P2002') {
+      let conflict: any = null;
+      try {
+        const t = String(body.title || '').trim();
+        const d = body.date ? new Date(body.date) : null;
+        const sId = body.seriesId || null;
+        if (t && d) {
+          const lo = new Date(d); lo.setHours(0, 0, 0, 0);
+          const hi = new Date(d); hi.setHours(23, 59, 59, 999);
+          const existing = await prisma.event.findFirst({
+            where: {
+              title: t,
+              date: { gte: lo, lte: hi },
+              ...(sId ? { seriesId: String(sId) } : { seriesId: null }),
+              NOT: { id },
+            },
+            include: { series: { select: { title: true } } },
+          });
+          if (existing) {
+            conflict = {
+              id: existing.id,
+              title: existing.title,
+              date: existing.date.toISOString().slice(0, 10),
+              seriesTitle: existing.series?.title || null,
+            };
+          }
+        }
+      } catch {}
+      return NextResponse.json(
+        {
+          error:
+            'Another event already exists with the same series, date, and title. ' +
+            'Change one of those fields to save, or use the Merge tool on Manage Events ' +
+            'to combine the two if they really are duplicates.',
+          code: 'DUPLICATE_EVENT',
+          conflict,
+        },
+        { status: 409 },
+      );
+    }
+    if (err?.code === 'P2025') {
+      return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
+    }
     console.error('Event update failed:', err);
     return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 });
   }
