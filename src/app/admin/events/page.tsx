@@ -275,7 +275,19 @@ export default function ManageEventsPage() {
         }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      if (!r.ok) {
+        // Special-case the duplicate-event constraint with a clearer prompt
+        if (j?.code === 'DUPLICATE_EVENT') {
+          const c = j.conflict;
+          const detail = c
+            ? `\n\nConflicts with: "${c.title}" on ${c.date}` +
+              (c.seriesTitle ? ` in series "${c.seriesTitle}"` : '') + '.'
+            : '';
+          alert((j.error || 'Duplicate event.') + detail);
+          return;
+        }
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
       setEditing(null);
       reload();
     } catch (err: any) {
