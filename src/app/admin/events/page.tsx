@@ -275,7 +275,19 @@ export default function ManageEventsPage() {
         }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      if (!r.ok) {
+        // Special-case the duplicate-event constraint with a clearer prompt
+        if (j?.code === 'DUPLICATE_EVENT') {
+          const c = j.conflict;
+          const detail = c
+            ? `\n\nConflicts with: "${c.title}" on ${c.date}` +
+              (c.seriesTitle ? ` in series "${c.seriesTitle}"` : '') + '.'
+            : '';
+          alert((j.error || 'Duplicate event.') + detail);
+          return;
+        }
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
       setEditing(null);
       reload();
     } catch (err: any) {
@@ -314,7 +326,15 @@ export default function ManageEventsPage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
-      setFlashMessage(`Merged "${j.sourceTitle}" into "${j.targetTitle}" — ${j.movedAttendances} attendances moved, ${j.mergedConflicts} duration sums.`);
+      setFlashMessage(
+        `Merged "${j.sourceTitle}" → "${j.targetTitle}". ` +
+        `Source had ${j.startingSourceCount ?? '?'} attendances, ` +
+        `target had ${j.startingTargetCount ?? '?'}. ` +
+        `Moved ${j.movedAttendances ?? 0} unique people · ` +
+        `summed ${j.mergedAdditive ?? 0} additive overlaps (likely re-joins) · ` +
+        `de-duped ${j.exactDuplicates ?? 0} exact-match duplicates. ` +
+        `Target now has ${j.finalTargetCount ?? '?'} attendances total.`
+      );
       setTimeout(() => setFlashMessage(null), 8000);
       setMerging(null); setMergeTargetId(''); setMergeTargetQ('');
       reload();
