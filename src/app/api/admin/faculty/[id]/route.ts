@@ -83,3 +83,56 @@ export async function PATCH(
     return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 });
   }
 }
+
+// ── DELETE /api/admin/faculty/[id] ────────────────────────────────────────
+// Admin-only. Refuses to delete a faculty row that has any attendance
+// records UNLESS ?force=1 is in the query string. With force, the
+// attendance rows are deleted in the same transaction first, then the
+// faculty row, so the "remove a person and everything they ever attended"
+// path is one atomic operation.
+//
+// NOTE: Faculty.attendances has onDelete: Cascade in the schema, so the
+// faculty delete alone *would* drop the attendances. We still wipe them
+// explicitly first, in a transaction, so we can:
+//   a) return an accurate deletedAttendances count
+//   b) verify the row is gone before reporting success
+//   c) protect against partially-cascaded states if a referential trigger
+//      ever changes.
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const jar = await cookies();
+  if (!(await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const { id } = await params;
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  const force = new URL(req.url).searchParams.get('force') === '1';
+
+  const attendanceCount = await prisma.attendance.count({ where: { facultyId: id } });
+  if (attendanceCount > 0 && !force) {
+    return NextResponse.json({
+      error: `This faculty has ${attendanceCount} attendance record(s). Pass ?force=1 to delete the faculty AND their attendances.`,
+      attendanceCount,
+    }, { status: 409 });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      const deletedAttendances = attendanceCount > 0
+        ? (await tx.attendance.deleteMany({ where: { facultyId: id } })).count
+        : 0;
+      await tx.faculty.delete({ where: { id } });
+      return { deletedAttendances };
+    });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err: any) {
+    if (err?.code === 'P2025') {
+      return NextResponse.json({ error: 'Faculty not found.' }, { status: 404 });
+    }
+    console.error('Faculty delete failed:', err);
+    return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 });
+  }
+}

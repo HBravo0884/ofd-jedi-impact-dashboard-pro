@@ -62,6 +62,11 @@ export default function DirectoryClient({
   const [mergeTargetId, setMergeTargetId] = useState<string>('');
   const [mergingNow, setMergingNow] = useState(false);
 
+  // Delete modal (typed-name confirmation — accidental click protection)
+  const [deleting, setDeleting] = useState<FacultyRow | null>(null);
+  const [deleteTypedName, setDeleteTypedName] = useState('');
+  const [deletingNow, setDeletingNow] = useState(false);
+
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -132,6 +137,54 @@ export default function DirectoryClient({
     setErrorMessage(null);
   };
   const closeEdit = () => { setEditing(null); setEditDraft(null); };
+
+  // ── Delete handlers ─────────────────────────────────────────────────────
+  const openDelete = (f: FacultyRow) => {
+    setDeleting(f);
+    setDeleteTypedName('');
+  };
+  const closeDelete = () => { setDeleting(null); setDeleteTypedName(''); };
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    if (deleteTypedName.trim().toLowerCase() !== deleting.lastName.trim().toLowerCase()) {
+      setErrorMessage(`Please type "${deleting.lastName}" exactly to confirm.`);
+      return;
+    }
+    setDeletingNow(true);
+    setErrorMessage(null);
+    try {
+      // Two-phase: first try without force. Server returns 409 + attendanceCount
+      // if there are records — we re-prompt with force=1.
+      let r = await fetch(`/api/admin/faculty/${encodeURIComponent(deleting.id)}`, { method: 'DELETE' });
+      if (r.status === 409) {
+        const j = await r.json().catch(() => ({}));
+        const attCount = j.attendanceCount ?? '(unknown)';
+        const ok = confirm(
+          `${deleting.lastName}, ${deleting.firstName} has ${attCount} attendance record(s). ` +
+          `Delete the faculty AND all ${attCount} attendance record(s)?`
+        );
+        if (!ok) { setDeletingNow(false); return; }
+        r = await fetch(`/api/admin/faculty/${encodeURIComponent(deleting.id)}?force=1`, { method: 'DELETE' });
+      }
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
+      const j = await r.json().catch(() => ({}));
+      setFaculty((rows) => rows.filter((row) => row.id !== deleting.id));
+      setFlashMessage(
+        `Deleted ${deleting.lastName}, ${deleting.firstName}` +
+        (j.deletedAttendances ? ` and ${j.deletedAttendances} attendance record(s).` : '.')
+      );
+      setTimeout(() => setFlashMessage(null), 4000);
+      closeDelete();
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Delete failed');
+    } finally {
+      setDeletingNow(false);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editing || !editDraft) return;
     setSavingEdit(true);
@@ -316,7 +369,17 @@ export default function DirectoryClient({
                 <tr><td colSpan={isAdmin ? 9 : 6} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>No matches.</td></tr>
               ) : filteredSorted.map((f, i) => (
                 <tr key={f.id} style={{ background: i % 2 ? '#fafcfc' : 'white', borderTop: '1px solid var(--border)' }}>
-                  <td style={td}><strong>{f.lastName}</strong>, {f.firstName}</td>
+                  <td style={td}>
+                    {isAdmin ? (
+                      <Link href={`/admin/directory/${encodeURIComponent(f.id)}`}
+                            style={{ color: 'var(--c1d)', textDecoration: 'none' }}
+                            title="Open attendance history + signature for this faculty">
+                        <strong>{f.lastName}</strong>, {f.firstName}
+                      </Link>
+                    ) : (
+                      <span><strong>{f.lastName}</strong>, {f.firstName}</span>
+                    )}
+                  </td>
                   <td style={{ ...td, color: '#475569', fontSize: '0.85rem' }}>
                     {f.adminTitle || <em style={{ color: '#cbd5e1' }}>—</em>}
                     {f.positionType && (
@@ -356,6 +419,10 @@ export default function DirectoryClient({
                       <button onClick={() => openMerge(f)} style={{ ...miniBtn, marginLeft: 4, borderColor: '#fcd34d', color: '#854d0e' }}
                               title="Merge this profile into another (e.g. consolidate duplicates)">
                         Merge
+                      </button>
+                      <button onClick={() => openDelete(f)} style={{ ...miniBtn, marginLeft: 4, borderColor: '#fca5a5', color: '#991b1b' }}
+                              title="Delete this faculty (with attendance records, if any)">
+                        Del
                       </button>
                     </td>
                   )}
@@ -474,6 +541,43 @@ export default function DirectoryClient({
                     style={{ ...btnPrimary, background: mergingNow || !mergeTargetId ? '#999' : '#dc2626' }}
                     title="Move all attendances and aliases from source to target, then delete source.">
               {mergingNow ? 'Merging…' : 'Confirm merge'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── DELETE MODAL ─────────────────────────────────────────────────── */}
+      {deleting && (
+        <Modal title={`Delete ${deleting.lastName}, ${deleting.firstName}?`} onClose={deletingNow ? undefined : closeDelete}>
+          <p style={{ marginTop: 0, color: '#475569', fontSize: '0.92rem' }}>
+            This will permanently remove this faculty profile. If they have attendance
+            records on file, those will be deleted too (you'll be asked to confirm a
+            second time before any attendance rows are dropped).
+          </p>
+          <p style={{ color: '#0d2e32', fontSize: '0.9rem', marginBottom: 6 }}>
+            To confirm, type the last name <strong>{deleting.lastName}</strong> below:
+          </p>
+          <input type="text" value={deleteTypedName}
+                 onChange={(e) => setDeleteTypedName(e.target.value)}
+                 placeholder={deleting.lastName}
+                 autoFocus
+                 style={{
+                   width: '100%', padding: '9px 12px', fontSize: '0.95rem',
+                   border: '1px solid var(--border)', borderRadius: 6,
+                   fontFamily: 'inherit', outline: 'none', marginBottom: 14,
+                 }} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={closeDelete} disabled={deletingNow} style={btnGhost}>Cancel</button>
+            <button onClick={confirmDelete}
+                    disabled={deletingNow || deleteTypedName.trim().toLowerCase() !== deleting.lastName.trim().toLowerCase()}
+                    style={{
+                      ...btnPrimary,
+                      background: deletingNow ||
+                                  deleteTypedName.trim().toLowerCase() !== deleting.lastName.trim().toLowerCase()
+                        ? '#999' : '#dc2626',
+                    }}
+                    title="Permanently delete this faculty (and their attendances, if any).">
+              {deletingNow ? 'Deleting…' : 'Delete faculty'}
             </button>
           </div>
         </Modal>
