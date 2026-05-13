@@ -105,7 +105,9 @@ model Event {
   date           DateTime
   baseDuration   Int            // Official meeting length in minutes
   topic          String?
-  speaker        String?
+  speaker        String?         // Speaker 1
+  speaker2       String?         // Speaker 2 (optional)
+  speaker3       String?         // Speaker 3 (optional)
   hiddenFromKiosk Boolean       @default(false)  // suppress from kiosk picker
   
   seriesId       String?

@@ -115,10 +115,11 @@ export default function AdminMenu({ pendingCount }: AdminMenuProps) {
           }}
         >
           <MenuSection label="Data & People">
-            <MenuLink href="/admin/ingestion"  icon="📥" onClick={() => setOpen(false)}>Manage Data</MenuLink>
-            <MenuLink href="/admin/events"     icon="📅" onClick={() => setOpen(false)}>Manage Events</MenuLink>
-            <MenuLink href="/directory"        icon="👥" onClick={() => setOpen(false)}>Directory</MenuLink>
-            <MenuLink href="/admin/quarantine" icon="🚨" onClick={() => setOpen(false)} badge={pendingCount}>
+            <MenuLink href="/admin/ingestion"    icon="📥" onClick={() => setOpen(false)}>Manage Data</MenuLink>
+            <MenuLink href="/admin/events"       icon="📅" onClick={() => setOpen(false)}>Manage Events</MenuLink>
+            <MenuLink href="/admin/event-record" icon="📋" onClick={() => setOpen(false)}>Event Record</MenuLink>
+            <MenuLink href="/directory"          icon="👥" onClick={() => setOpen(false)}>Directory</MenuLink>
+            <MenuLink href="/admin/quarantine"   icon="🚨" onClick={() => setOpen(false)} badge={pendingCount}>
               Quarantine
             </MenuLink>
           </MenuSection>

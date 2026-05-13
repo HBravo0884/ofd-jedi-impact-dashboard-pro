@@ -14,6 +14,9 @@ interface EventRow {
   seriesTitle: string | null;
   attendances: number;
   hiddenFromKiosk: boolean;
+  speaker?: string | null;
+  speaker2?: string | null;
+  speaker3?: string | null;
   learningObjectives?: string[];
   disclosureReport?: string | null;
   planningCommittee?: string | null;
@@ -259,6 +262,9 @@ export default function ManageEventsPage() {
           baseDuration: editing.baseDuration,
           seriesId: editing.seriesId,
           hiddenFromKiosk: !!editing.hiddenFromKiosk,
+          speaker:  editing.speaker  ?? null,
+          speaker2: editing.speaker2 ?? null,
+          speaker3: editing.speaker3 ?? null,
           eventTime: editing.eventTime ?? null,
           location: editing.location ?? null,
           isGrandRounds: !!editing.isGrandRounds,
@@ -613,6 +619,21 @@ export default function ManageEventsPage() {
               <input type="text" value={editing.topic ?? ''}
                      onChange={(e) => setEditing({ ...editing, topic: e.target.value })} style={inputStyle} />
             </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+              <Field label="Speaker 1">
+                <input type="text" value={editing.speaker ?? ''}
+                       onChange={(e) => setEditing({ ...editing, speaker: e.target.value })}
+                       placeholder="e.g. Dr. Sayan Nandi" style={inputStyle} />
+              </Field>
+              <Field label="Speaker 2 (optional)">
+                <input type="text" value={editing.speaker2 ?? ''}
+                       onChange={(e) => setEditing({ ...editing, speaker2: e.target.value })} style={inputStyle} />
+              </Field>
+              <Field label="Speaker 3 (optional)">
+                <input type="text" value={editing.speaker3 ?? ''}
+                       onChange={(e) => setEditing({ ...editing, speaker3: e.target.value })} style={inputStyle} />
+              </Field>
+            </div>
             <Field label="Series">
               <select value={editing.seriesId ?? ''}
                       onChange={(e) => setEditing({ ...editing, seriesId: e.target.value || null })} style={inputStyle}>
