@@ -12,6 +12,7 @@ import {
   type DetectionResult,
   type DirectoryRow,
 } from '@/lib/zoomParser';
+import { levenshteinSimilarity } from '@/lib/heuristics';
 
 interface SeriesOption {
   id: string;
@@ -621,9 +622,28 @@ export default function IngestionPortal() {
                 const isExpanded = expandedKey === g.key;
                 const excluded = excludedRows[g.key] || new Set<number>();
                 const includedRowCount = g.attendees.length - excluded.size;
-                // Duplicate detection: same date + same title (case-insensitive)
+                // Duplicate detection — three tiers, most specific first:
+                //   EXACT     same date + exact title (case-insensitive)
+                //   FUZZY     same date + Levenshtein-similar title ≥0.85
+                //   (future: same Zoom meeting ID once we persist it)
                 const dupKey = `${g.startDate}|${(g.topic || '').trim().toLowerCase()}`;
-                const dup = g.startDate ? existingByKey.get(dupKey) : undefined;
+                let dup: ExistingEvent | undefined = g.startDate ? existingByKey.get(dupKey) : undefined;
+                let dupReason: string | null = dup ? 'Exact match: same date + same title' : null;
+                if (!dup && g.startDate) {
+                  for (const [key, ev] of existingByKey.entries()) {
+                    if (!key.startsWith(g.startDate + '|')) continue;
+                    const existingTitle = key.split('|').slice(1).join('|');
+                    const sim = levenshteinSimilarity(
+                      g.topic.trim().toLowerCase(),
+                      existingTitle,
+                    );
+                    if (sim >= 0.85) {
+                      dup = ev;
+                      dupReason = `Likely duplicate · ${Math.round(sim * 100)}% title match · same date`;
+                      break;
+                    }
+                  }
+                }
                 return (
                   <div key={g.key} style={{
                     border: r && r.ok
@@ -651,13 +671,24 @@ export default function IngestionPortal() {
                           </div>
                           {dup && (
                             <span
-                              title={`This event already exists in the database (${dup.attendances} attendances on file). Re-ingesting is safe — the database uses idempotent upserts so no duplicate event or duplicate attendance will be created.`}
+                              title={`${dupReason || 'Likely duplicate'}. Existing event: "${dup.title}" on ${dup.date}${dup.seriesTitle ? ` in series "${dup.seriesTitle}"` : ''} (${dup.attendances} attendances on file). If you re-ingest, Attendance rows upsert idempotently and no double-counting happens. If the events are TRULY duplicates, use the Merge tool on Manage Events after ingest.`}
                               style={{
-                                padding: '1px 8px', background: '#fde68a', color: '#854d0e',
+                                padding: '1px 8px',
+                                background: dupReason && dupReason.startsWith('Exact') ? '#fde68a' : '#fed7aa',
+                                color: '#854d0e',
                                 borderRadius: 999, fontSize: '0.7rem', fontWeight: 700,
+                                cursor: 'help',
                               }}
                             >
-                              ⓘ already in DB — safe to re-ingest
+                              ⓘ {dupReason && dupReason.startsWith('Exact') ? 'already in DB' : 'likely duplicate'}
+                            </span>
+                          )}
+                          {dup && dupReason && (
+                            <span style={{
+                              fontSize: '0.7rem', color: '#854d0e', marginLeft: 4,
+                              fontStyle: 'italic',
+                            }} title={`Existing: "${dup.title}" on ${dup.date}`}>
+                              {dupReason.replace(/^Exact match: /, '').replace(/^Likely duplicate · /, '')}
                             </span>
                           )}
                         </div>

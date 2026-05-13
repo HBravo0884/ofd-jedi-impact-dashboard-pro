@@ -6,68 +6,104 @@ import { prisma } from '@/lib/prisma';
 export const revalidate = 0;
 
 // ── POST /api/admin/faculty/merge ─────────────────────────────────────────
-// Admin-only. Merge `sourceId` into `targetId`:
-//
-//   1. Move every Attendance from source → target. If target already has
-//      an attendance for that event (same (facultyId, eventId)), SUM
-//      durations into target's row.
-//   2. Union source's aliases, degrees, and signatureUrls arrays into
-//      target's. Also push source's full display name as an alias so the
-//      next ingest's T3 fuzzy matcher catches it.
-//   3. Promote target's status to VERIFIED if either side was VERIFIED.
-//   4. Delete source.
-//
-// The whole thing runs in a Prisma transaction so a partial failure leaves
-// both rows intact.
+// Bulletproof faculty merge — same pattern as event merge:
+//   - Bulk updateMany for non-collisions
+//   - Per-row exact-duplicate vs additive handling for collisions
+//   - Explicit zero-attendance verification before delete
+//   - Unions aliases / degrees / signatures into target
+//   - Promotes target to VERIFIED if either side was
 export async function POST(req: Request) {
   const jar = await cookies();
   if (!(await verifyAdmin(jar.get(ADMIN_COOKIE_NAME)?.value))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   let body: any = {};
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Bad JSON' }, { status: 400 }); }
+  try { body = await req.json(); } catch {
+    return NextResponse.json({ error: 'Bad JSON' }, { status: 400 });
+  }
   const sourceId = String(body.sourceId || '').trim();
   const targetId = String(body.targetId || '').trim();
-  if (!sourceId || !targetId) return NextResponse.json({ error: 'sourceId and targetId required' }, { status: 400 });
-  if (sourceId === targetId)  return NextResponse.json({ error: 'Cannot merge a faculty into itself.' }, { status: 400 });
+  if (!sourceId || !targetId) {
+    return NextResponse.json({ error: 'sourceId and targetId required' }, { status: 400 });
+  }
+  if (sourceId === targetId) {
+    return NextResponse.json({ error: 'Cannot merge a faculty into itself.' }, { status: 400 });
+  }
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       const source = await tx.faculty.findUnique({
         where: { id: sourceId },
-        include: { attendances: true },
+        select: {
+          id: true, firstName: true, lastName: true,
+          aliases: true, degrees: true, signatureUrls: true, status: true,
+        },
       });
-      const target = await tx.faculty.findUnique({ where: { id: targetId } });
+      const target = await tx.faculty.findUnique({
+        where: { id: targetId },
+        select: {
+          id: true, firstName: true, lastName: true,
+          aliases: true, degrees: true, signatureUrls: true, status: true,
+        },
+      });
       if (!source) throw new Error('Source faculty not found.');
       if (!target) throw new Error('Target faculty not found.');
 
-      // Move attendances. Use upsert so collisions sum durations.
-      let movedCount = 0;
-      let mergedDurations = 0;
-      for (const a of source.attendances) {
-        const existing = await tx.attendance.findUnique({
-          where: { facultyId_eventId: { facultyId: targetId, eventId: a.eventId } },
-        });
-        if (existing) {
-          // Sum durations and drop the source row.
-          await tx.attendance.update({
-            where: { facultyId_eventId: { facultyId: targetId, eventId: a.eventId } },
-            data: { durationJoined: existing.durationJoined + a.durationJoined },
-          });
-          await tx.attendance.delete({ where: { id: a.id } });
-          mergedDurations += 1;
+      const targetAtt = await tx.attendance.findMany({
+        where: { facultyId: targetId },
+        select: { eventId: true, durationJoined: true },
+      });
+      const targetByEvent = new Map<string, number>(
+        (targetAtt as Array<{ eventId: string; durationJoined: number }>).map(
+          (a) => [a.eventId, a.durationJoined],
+        ),
+      );
+
+      const sourceAtt = await tx.attendance.findMany({
+        where: { facultyId: sourceId },
+        select: { id: true, eventId: true, durationJoined: true },
+      });
+      const startingTargetCount = targetByEvent.size;
+      const startingSourceCount = sourceAtt.length;
+
+      const collisionEventIds = sourceAtt
+        .filter((a: any) => targetByEvent.has(a.eventId))
+        .map((a: any) => a.eventId);
+
+      let mergedAdditive = 0;
+      let exactDuplicates = 0;
+      for (const eventId of collisionEventIds) {
+        const sourceRow = sourceAtt.find((a: any) => a.eventId === eventId);
+        if (!sourceRow) continue;
+        const existingDur = targetByEvent.get(eventId) || 0;
+        if (existingDur === sourceRow.durationJoined) {
+          await tx.attendance.delete({ where: { id: sourceRow.id } });
+          exactDuplicates += 1;
         } else {
-          // Re-point this attendance row at the target.
           await tx.attendance.update({
-            where: { id: a.id },
-            data: { facultyId: targetId },
+            where: { facultyId_eventId: { facultyId: targetId, eventId } },
+            data: { durationJoined: existingDur + sourceRow.durationJoined },
           });
-          movedCount += 1;
+          await tx.attendance.delete({ where: { id: sourceRow.id } });
+          mergedAdditive += 1;
         }
       }
+      const mergedConflicts = mergedAdditive + exactDuplicates;
 
-      // Union arrays. Also push source's "Last, First" as an alias so
-      // a future ingest with that exact display name resolves via T3.
+      const bulkResult = await tx.attendance.updateMany({
+        where: { facultyId: sourceId },
+        data: { facultyId: targetId },
+      });
+      const movedAttendances = bulkResult.count;
+
+      const remaining = await tx.attendance.count({ where: { facultyId: sourceId } });
+      if (remaining > 0) {
+        throw new Error(
+          `Refused to delete source faculty: ${remaining} attendance row(s) ` +
+          `still reference it. Transaction rolled back.`,
+        );
+      }
+
       const sourceDisplay = `${source.firstName} ${source.lastName}`.trim();
       const mergedAliases = Array.from(new Set([
         ...(target.aliases || []),
@@ -82,7 +118,6 @@ export async function POST(req: Request) {
         ...(target.signatureUrls || []),
         ...(source.signatureUrls || []),
       ].filter(Boolean)));
-
       const newStatus =
         target.status === 'VERIFIED' || source.status === 'VERIFIED'
           ? 'VERIFIED' : target.status;
@@ -103,14 +138,27 @@ export async function POST(req: Request) {
         },
       });
 
-      // Delete source. Cascading FKs already handled attendances above.
       await tx.faculty.delete({ where: { id: sourceId } });
+
+      const finalTargetCount = await tx.attendance.count({ where: { facultyId: targetId } });
+      const expectedTargetCount = startingTargetCount + startingSourceCount - mergedConflicts;
+      if (finalTargetCount !== expectedTargetCount) {
+        throw new Error(
+          `Merge math mismatch — target has ${finalTargetCount} attendances, ` +
+          `expected ${expectedTargetCount}. Transaction rolled back.`,
+        );
+      }
 
       return {
         target: updatedTarget,
-        movedAttendances: movedCount,
-        mergedConflicts: mergedDurations,
         sourceName: sourceDisplay,
+        startingSourceCount,
+        startingTargetCount,
+        movedAttendances,
+        mergedConflicts,
+        mergedAdditive,
+        exactDuplicates,
+        finalTargetCount,
       };
     });
 
