@@ -37,11 +37,17 @@ function levenshteinDistance(a: string, b: string): number {
 }
 
 export function isDnaMatch(str1: string, str2: string, threshold = 0.85): boolean {
-  const maxLen = Math.max(str1.length, str2.length);
-  if (maxLen === 0) return false;
-  const distance = levenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
-  const similarity = (maxLen - distance) / maxLen;
-  return similarity >= threshold;
+  return levenshteinSimilarity(str1, str2) >= threshold;
+}
+
+/** Levenshtein-based similarity score, 0..1 (1 = identical). Case-insensitive. */
+export function levenshteinSimilarity(str1: string, str2: string): number {
+  const a = String(str1 || '');
+  const b = String(str2 || '');
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 0;
+  const distance = levenshteinDistance(a.toLowerCase(), b.toLowerCase());
+  return (maxLen - distance) / maxLen;
 }
 
 /**
