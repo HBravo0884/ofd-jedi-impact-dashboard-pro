@@ -65,20 +65,28 @@ export default function EventRecordClient() {
 
   // ── Computed Tier 1 metrics ──────────────────────────────────────────
   const todayISO = new Date().toISOString().slice(0, 10);
+  // CME is only meaningful for activities >=30 minutes (HU CME convention).
+  // Below that threshold we hide the credit number — 0.1 / 0.2 credits is noise.
+  const CME_MIN_DURATION = 30;
   type EnrichedRow = EventRow & {
-    cmeCredits: number;
-    avgAttendancePct: number;
+    cmeCredits: number | null;           // null = activity too short to be a CME event
+    avgMinPerPerson: number;             // total watched / unique attendees
     timeStatus: 'past' | 'today' | 'future';
   };
   const enriched: EnrichedRow[] = useMemo(() => events.map((e) => {
-    const cmeCredits = e.baseDuration > 0 ? +(e.baseDuration / 60).toFixed(2) : 0;
-    const denom = e.uniqueAttendees * e.baseDuration;
-    const avgAttendancePct = denom > 0 ? Math.round((e.totalMinutes / denom) * 100) : 0;
+    const cmeCredits =
+      e.baseDuration >= CME_MIN_DURATION
+        ? +(e.baseDuration / 60).toFixed(2)
+        : null;
+    const avgMinPerPerson =
+      e.uniqueAttendees > 0
+        ? Math.round((e.totalMinutes / e.uniqueAttendees) * 10) / 10
+        : 0;
     let timeStatus: 'past' | 'today' | 'future';
     if (e.date < todayISO) timeStatus = 'past';
     else if (e.date === todayISO) timeStatus = 'today';
     else timeStatus = 'future';
-    return { ...e, cmeCredits, avgAttendancePct, timeStatus };
+    return { ...e, cmeCredits, avgMinPerPerson, timeStatus };
   }), [events, todayISO]);
 
   const filteredSorted = useMemo(() => {
@@ -111,8 +119,8 @@ export default function EventRecordClient() {
         case 'duration':  cmp = a.baseDuration - b.baseDuration; break;
         case 'attendees': cmp = a.uniqueAttendees - b.uniqueAttendees; break;
         case 'minutes':   cmp = a.totalMinutes - b.totalMinutes; break;
-        case 'credits':   cmp = a.cmeCredits - b.cmeCredits; break;
-        case 'avgAttn':   cmp = a.avgAttendancePct - b.avgAttendancePct; break;
+        case 'credits':   cmp = (a.cmeCredits ?? -1) - (b.cmeCredits ?? -1); break;
+        case 'avgAttn':   cmp = a.avgMinPerPerson - b.avgMinPerPerson; break;
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -137,7 +145,7 @@ export default function EventRecordClient() {
       'Date','Status','Time','Location','Series','Title','Topic','Grand Rounds',
       'Speaker 1','Speaker 2','Speaker 3',
       'Base Duration (min)','CME Credits',
-      'Unique Attendees','Total Minutes Watched','Avg Attendance %',
+      'Unique Attendees','Total Minutes Watched','Avg Min/Person',
       'Hidden from Kiosk','Event ID',
     ];
     const lines = [header.map(esc).join(',')];
@@ -147,8 +155,8 @@ export default function EventRecordClient() {
         e.seriesTitle || 'Standalone', e.title, e.topic || '',
         e.isGrandRounds ? 'YES' : 'NO',
         e.speaker || '', e.speaker2 || '', e.speaker3 || '',
-        e.baseDuration, e.cmeCredits,
-        e.uniqueAttendees, e.totalMinutes, e.avgAttendancePct,
+        e.baseDuration, e.cmeCredits ?? '',
+        e.uniqueAttendees, e.totalMinutes, e.avgMinPerPerson,
         e.hiddenFromKiosk ? 'YES' : 'NO',
         e.id,
       ].map(esc).join(','));
@@ -176,13 +184,6 @@ export default function EventRecordClient() {
       background: color, marginRight: 6, verticalAlign: 'middle',
     }} />;
   };
-  const pctBg = (pct: number) => {
-    if (pct >= 80) return { bg: '#dcfce7', fg: '#166534' };
-    if (pct >= 50) return { bg: '#fef9c3', fg: '#854d0e' };
-    if (pct > 0)   return { bg: '#fee2e2', fg: '#991b1b' };
-    return { bg: 'transparent', fg: '#94a3b8' };
-  };
-
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: 24 }}>
       <Link href="/" style={{
@@ -246,7 +247,7 @@ export default function EventRecordClient() {
         </strong> total attendances · <strong style={{ color: 'var(--c1)' }}>
           {fmtMin(filteredSorted.reduce((s, e) => s + e.totalMinutes, 0))}
         </strong> total watched · <strong style={{ color: 'var(--c1)' }}>
-          {filteredSorted.reduce((s, e) => s + e.cmeCredits, 0).toFixed(1)}
+          {filteredSorted.reduce((s, e) => s + (e.cmeCredits ?? 0), 0).toFixed(1)}
         </strong> CME credits issued.
       </div>
 
@@ -266,20 +267,25 @@ export default function EventRecordClient() {
                 <th style={th} onClick={() => toggleSort('series')}>Series{sortIcon('series')}</th>
                 <th style={th} onClick={() => toggleSort('title')}>Title{sortIcon('title')}</th>
                 <th style={th} onClick={() => toggleSort('speaker')}>Speaker(s){sortIcon('speaker')}</th>
-                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('duration')}>
+                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('duration')}
+                    title="Scheduled meeting length, in minutes, as reported by Zoom.">
                   Duration{sortIcon('duration')}
                 </th>
-                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('credits')}>
+                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('credits')}
+                    title={`Continuing Medical Education credit hours (duration ÷ 60). Hidden for activities under ${CME_MIN_DURATION} minutes, which do not qualify as CME.`}>
                   CME{sortIcon('credits')}
                 </th>
-                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('attendees')}>
+                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('attendees')}
+                    title="Distinct faculty members who attended at least one minute of this event.">
                   Unique{sortIcon('attendees')}
                 </th>
-                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('minutes')}>
+                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('minutes')}
+                    title="Sum of every attendee's watch time, in minutes. (If two people each watch 30 min, this is 60 min.)">
                   Total min{sortIcon('minutes')}
                 </th>
-                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('avgAttn')}>
-                  Avg %{sortIcon('avgAttn')}
+                <th style={{ ...th, textAlign: 'right' }} onClick={() => toggleSort('avgAttn')}
+                    title="Average minutes watched per attendee = Total min ÷ Unique. Easier to interpret than a percentage when the scheduled Duration is inaccurate.">
+                  Avg/person{sortIcon('avgAttn')}
                 </th>
                 <th style={{ ...th, width: 90 }}></th>
               </tr>
@@ -291,7 +297,6 @@ export default function EventRecordClient() {
                 </td></tr>
               ) : filteredSorted.map((e, i) => {
                 const speakers = [e.speaker, e.speaker2, e.speaker3].filter(Boolean) as string[];
-                const pctP = pctBg(e.avgAttendancePct);
                 return (
                   <tr key={e.id} style={{
                     borderTop: '1px solid var(--border)',
@@ -347,8 +352,13 @@ export default function EventRecordClient() {
                     <td style={{ ...td, textAlign: 'right', color: '#475569', fontSize: '0.82rem' }}>
                       {e.baseDuration} min
                     </td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#0d2e32', fontSize: '0.82rem' }}>
-                      {e.cmeCredits.toFixed(1)}
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#0d2e32', fontSize: '0.82rem' }}
+                        title={e.cmeCredits === null
+                          ? `Activities under ${CME_MIN_DURATION} min are not CME events.`
+                          : `${e.cmeCredits.toFixed(2)} credit hours (${e.baseDuration} min ÷ 60)`}>
+                      {e.cmeCredits === null
+                        ? <span style={{ color: '#cbd5e1' }}>—</span>
+                        : e.cmeCredits.toFixed(1)}
                     </td>
                     <td style={{
                       ...td, textAlign: 'right', fontWeight: 700,
@@ -358,16 +368,13 @@ export default function EventRecordClient() {
                       ...td, textAlign: 'right', fontWeight: 700,
                       color: e.totalMinutes > 0 ? 'var(--c1)' : 'var(--muted)',
                     }}>{fmtMin(e.totalMinutes)}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>
-                      {e.uniqueAttendees > 0 ? (
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px',
-                          background: pctP.bg, color: pctP.fg,
-                          borderRadius: 999, fontSize: '0.74rem', fontWeight: 700,
-                        }}>{e.avgAttendancePct}%</span>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#0d2e32', fontSize: '0.82rem' }}
+                        title={e.uniqueAttendees > 0
+                          ? `${e.totalMinutes} total min ÷ ${e.uniqueAttendees} unique attendee${e.uniqueAttendees === 1 ? '' : 's'}`
+                          : 'No attendees yet'}>
+                      {e.uniqueAttendees > 0
+                        ? <>{e.avgMinPerPerson}<span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: '0.7rem', marginLeft: 2 }}>min</span></>
+                        : <span style={{ color: '#cbd5e1' }}>—</span>}
                     </td>
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}
                         onClick={(ev) => ev.stopPropagation()}>

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import SeriesClient from './SeriesClient';
+import { getStringColor } from '@/lib/canonicalPalette';
 
 const prisma = new PrismaClient();
 
@@ -66,12 +67,13 @@ export default async function SeriesPage() {
       // List of unique departments for this series
       const validDepts = penetrationLabels; 
       
-      const sessionMatrixDatasets = validDepts.map((dept, idx) => {
-          // Calculate the color using HSL based on index to ensure dynamic distinct colors just like the mockup
-          const hue = (idx * 137.508) % 360; 
+      const sessionMatrixDatasets = validDepts.map((dept) => {
+          // Canonical palette — same dept gets the same color across every
+          // page on the site so admins can recognize series visually.
+          const humanLabel = dept.replace(/([A-Z])/g, ' $1').trim();
           return {
-             label: dept.replace(/([A-Z])/g, ' $1').trim(),
-             backgroundColor: `hsl(${hue}, 60%, 65%)`,
+             label: humanLabel,
+             backgroundColor: getStringColor(humanLabel),
              data: activeEvents.map(e => {
                  return e.attendances.filter(a => a.faculty.department === dept).length;
              })
@@ -111,7 +113,10 @@ export default async function SeriesPage() {
          return `${yrMo} · ${e.series?.title || 'Standalone Event'} - ${e.title}`.substring(0, 45) + '...';
       }),
       counts: activeGlobal.map(e => e._count.attendances),
-      colors: activeGlobal.map((e, idx) => `hsl(${(idx * 50) % 360}, 60%, 75%)`) // Unique timeline colors
+      // Canonical-palette color per series so the timeline visually matches
+      // every other chart. OFD / 'Office of Faculty Development' renders grey
+      // automatically via getStringColor's special case.
+      colors: activeGlobal.map((e) => getStringColor(e.series?.title || 'Standalone Event'))
     };
 
   } catch (error) {
